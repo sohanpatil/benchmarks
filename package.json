@@ -70,6 +70,7 @@
     "@computesdk/s3": "^1.1.1",
     "@computesdk/sprites": "^0.1.5",
     "@computesdk/steel": "^0.2.0",
+    "@computesdk/tensorlake": "^0.1.0",
     "@computesdk/tigris": "^1.1.1",
     "@computesdk/upstash": "^0.3.0",
     "@computesdk/vercel": "^1.7.22",
