@@ -103,6 +103,7 @@ Sponsors enable independent benchmark infrastructure.
 - [ ] Cold start vs warm start metrics
 - [ ] Multi-region testing
 - [x] Cost-per-sandbox-minute
+- [ ] Git infrastructure benchmark ([draft spec](./GIT_BENCHMARK_SPEC.md))
 
 <br>
 
