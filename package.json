@@ -22,6 +22,7 @@
     "bench:just-bash": "tsx src/run.ts --provider just-bash",
     "bench:sprites": "tsx src/run.ts --provider sprites",
     "bench:browser": "tsx src/run.ts --mode browser",
+    "bench:tensorlake": "tsx src/run.ts --provider tensorlake",
     "bench:browser:browserbase": "tsx src/run.ts --mode browser --provider browserbase",
     "bench:browser:hyperbrowser": "tsx src/run.ts --mode browser --provider hyperbrowser",
     "bench:browser:kernel": "tsx src/run.ts --mode browser --provider kernel",
