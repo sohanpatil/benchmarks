@@ -28,6 +28,7 @@
     "bench:browser:steel": "tsx src/run.ts --mode browser --provider steel",
     "bench:browser:browseruse": "tsx src/run.ts --mode browser --provider browseruse",
     "bench:browser:anchorbrowser": "tsx src/run.ts --mode browser --provider anchorbrowser",
+    "bench:git": "tsx src/run.ts --mode git",
     "bench:storage": "tsx src/run.ts --mode storage",
     "bench:storage:s3": "tsx src/run.ts --mode storage --provider aws-s3",
     "bench:storage:r2": "tsx src/run.ts --mode storage --provider cloudflare-r2",

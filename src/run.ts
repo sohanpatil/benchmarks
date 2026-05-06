@@ -9,7 +9,9 @@ import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import { runBrowserBenchmark, writeBrowserResultsJson } from './browser/benchmark.js';
+import { runGitBenchmark, writeGitResultsJson } from './git/benchmark.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
+import { printGitResults } from './git/table.js';
 import { providers } from './sandbox/providers.js';
 import { storageProviders } from './storage/providers.js';
 import { browserProviders } from './browser/providers.js';
@@ -38,24 +40,54 @@ function getArgValue(args: string[], flag: string): string | undefined {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] {
+function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['git'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'browser') return ['browser'];
+  if (rawMode === 'git') return ['git'];
   const m = rawMode === 'concurrent' ? 'burst' : rawMode as BenchmarkMode;
   return [m];
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: BenchmarkMode | 'storage'): string {
+function modeToDir(m: BenchmarkMode | 'storage' | 'git'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
     case 'burst':
     case 'concurrent': return 'burst_tti';
     case 'storage': return 'storage';
+    case 'git': return 'git';
     default: return `${m}_tti`;
   }
+}
+
+async function runGit(): Promise<void> {
+  const fixtureCommitCount = parseInt(getArgValue(args, '--fixture-commits') || '1000', 10);
+
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: GIT');
+  console.log(`  Iterations: ${iterations}`);
+  console.log(`  Fixture commits: ${fixtureCommitCount}`);
+  console.log('='.repeat(70));
+
+  const result = await runGitBenchmark({
+    iterations,
+    fixtureCommitCount,
+  });
+
+  printGitResults(result);
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const resultsDir = path.resolve(__dirname, '../results/git');
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeGitResultsJson(result, outPath);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
 }
 
 async function runMode(mode: BenchmarkMode, toRun: typeof providers): Promise<void> {
@@ -243,6 +275,14 @@ async function main() {
 
     await runBrowser(toRun);
     console.log('\nAll browser tests complete.');
+    return;
+  }
+
+  if (modes[0] === 'git') {
+    console.log('ComputeSDK Git Infrastructure Benchmark (Draft)');
+    console.log(`Date: ${new Date().toISOString()}\n`);
+    await runGit();
+    console.log('\nGit benchmark complete.');
     return;
   }
 
