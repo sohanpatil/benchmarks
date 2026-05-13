@@ -7,7 +7,7 @@
     "arch": "x64"
   },
   "config": {
-    "iterations": 100,
+    "iterations": 10,
     "timeoutMs": 120000
   },
   "results": [
@@ -4094,7 +4094,7 @@
       "successRate": 1
     },
     {
-      "provider": "vercel",
+      "provider": "cloudflare",
       "iterations": [
         {
           "ttiMs": 667.02

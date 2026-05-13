@@ -7,14 +7,14 @@
     "arch": "x64"
   },
   "config": {
-    "iterations": 100,
+    "iterations": 10,
     "timeoutMs": 120000
   },
   "results": [
     {
       "provider": "archil",
       "mode": "staggered",
-      "concurrency": 100,
+      "concurrency": 10,
       "staggerDelayMs": 200,
       "wallClockMs": 20146.85,
       "timeToFirstReadyMs": 284.92,
@@ -833,9 +833,9 @@
       "successRate": 1
     },
     {
-      "provider": "blaxel",
+      "provider": "runloop",
       "mode": "staggered",
-      "concurrency": 100,
+      "concurrency": 10,
       "staggerDelayMs": 200,
       "wallClockMs": 20725.46,
       "timeToFirstReadyMs": 483.83,

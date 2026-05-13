@@ -7,7 +7,7 @@
     "arch": "x64"
   },
   "config": {
-    "iterations": 100,
+    "iterations": 10,
     "timeoutMs": 120000
   },
   "results": [
@@ -4148,7 +4148,7 @@
       "successRate": 0.98
     },
     {
-      "provider": "vercel",
+      "provider": "cloudflare",
       "mode": "concurrent",
       "concurrency": 100,
       "wallClockMs": 2129.64,
