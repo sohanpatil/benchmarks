@@ -55,13 +55,20 @@ Check items off as they land.
 
 ## 4. Launch script
 
-- [ ] `scripts/burst-100k-launch.sh` written, executable (`chmod +x`)
-- [ ] `esbuild` step in the script produces a working bundle
-- [ ] `psql -f db/burst-100k.sql` step runs (idempotent)
-- [ ] `nsc create` returns an instance ID
-- [ ] `nsc instance upload` succeeds
-- [ ] `INSERT INTO runs ...` inserts a `running` row
-- [ ] `nsc ssh ... nohup node coordinator.js &` returns immediately (detached)
+- [x] `scripts/burst-100k-launch.sh` written, executable (`chmod +x`)
+- [x] `esbuild` step in the script produces a working bundle
+- [x] `psql -f db/burst-100k.sql` step runs (idempotent)
+- [x] `nsc create` returns an instance ID (using `--bare --cidfile`)
+- [x] `nsc instance upload` succeeds (coordinator bundle + startup script)
+- [x] `INSERT INTO runs ...` inserts a `running` row (with `ON CONFLICT DO NOTHING`)
+- [x] `nsc ssh ... nohup node coordinator.cjs &` returns immediately (detached); `pgrep node` post-check confirms running
+
+### Notes on what we learned (worth keeping)
+
+- Wolfi `--bare` image has no `node`; install with `apk add -q nodejs` before launch.
+- BusyBox `sh` has no `disown` builtin (`disown: not found`); `nohup ... & </dev/null` alone is sufficient to detach.
+- Passing env via long line-continued `nsc ssh -- env VAR=val \ ...` is fragile — a broken `\` continuation silently truncated the command and caused `env` to print the environment (leaking secrets). The script now writes a `chmod 600` startup script locally with `printf '%q'`-quoted values, uploads it, runs it (which `rm -f`'s itself after detaching node), and confirms with `pgrep -x node`.
+- `nsc destroy` requires `--force` to skip the TTY confirmation in non-interactive contexts (CI).
 
 ## 5. Manual Namespace dry-run (N=1000)
 
