@@ -60,7 +60,12 @@ async function main() {
   );
 
   let lastStats: ProgressStats = { done: 0, in_flight: 0, errors: 0 };
-  const latencies: number[] = [];
+  // Track {idx, ms} for ok sandboxes so we can bucket by ramp position at
+  // run-end. `latencies` (sorted ms array) is derived from this.
+  const okResults: Array<{ idx: number; ms: number }> = [];
+  // Track every sandbox's start/end (epoch ms) — including errors — so we
+  // can reconstruct concurrency-over-time after the burst.
+  const intervals: Array<{ start: number; end: number }> = [];
   const errorCounts = { timeout: 0, http_error: 0, network_error: 0 };
 
   // Periodically upload the coordinator's own stdout/stderr (redirected to a
@@ -111,10 +116,14 @@ async function main() {
     await runBurst(provider, compute, {
       async onResult(result) {
         if (result.status === 'ok') {
-          latencies.push(result.latency_ms);
+          okResults.push({ idx: result.sandbox_idx, ms: result.latency_ms });
         } else {
           errorCounts[result.status]++;
         }
+        intervals.push({
+          start: Date.parse(result.started_at),
+          end: Date.parse(result.completed_at),
+        });
         tigris.writeResult(result);
         await pg.write(result);
       },
@@ -125,7 +134,7 @@ async function main() {
 
     clearInterval(heartbeat);
 
-    latencies.sort((a, b) => a - b);
+    const latencies = okResults.map(r => r.ms).sort((a, b) => a - b);
     const pct = (q: number) =>
       latencies.length === 0 ? 0 : latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * q))];
 
@@ -166,12 +175,95 @@ async function main() {
       mean_ms: Math.round(latencies.reduce((s, v) => s + v, 0) / latencies.length),
     };
 
+    // Ramp-phase segments. Sandbox starts are spread linearly over rampSeconds
+    // by index, so bucketing by idx ranges is equivalent to bucketing by
+    // ramp-position. Answers "does latency degrade as concurrency climbs?"
+    const totalN = provider.concurrencyTarget;
+    const segmentDefs = [
+      { name: 'first_25pct',  lo: 0,                        hi: Math.floor(totalN * 0.25) },
+      { name: 'middle_50pct', lo: Math.floor(totalN * 0.25), hi: Math.floor(totalN * 0.75) },
+      { name: 'last_25pct',   lo: Math.floor(totalN * 0.75), hi: totalN },
+    ];
+    const ramp_segments: Record<string, unknown> = {};
+    for (const seg of segmentDefs) {
+      const segLatencies = okResults
+        .filter(r => r.idx >= seg.lo && r.idx < seg.hi)
+        .map(r => r.ms)
+        .sort((a, b) => a - b);
+      const segPct = (q: number) =>
+        segLatencies.length === 0 ? 0
+          : segLatencies[Math.min(segLatencies.length - 1, Math.floor(segLatencies.length * q))];
+      ramp_segments[seg.name] = {
+        idx_range: [seg.lo, seg.hi - 1],
+        count_ok: segLatencies.length,
+        p50_ms: segPct(0.50),
+        p95_ms: segPct(0.95),
+        p99_ms: segPct(0.99),
+        max_ms: segLatencies.length ? segLatencies[segLatencies.length - 1] : 0,
+        mean_ms: segLatencies.length
+          ? Math.round(segLatencies.reduce((s, v) => s + v, 0) / segLatencies.length)
+          : 0,
+      };
+    }
+
+    // Concurrency-over-time. Build an interval-overlap timeline so we can
+    // tell whether the ramp actually behaved as configured and where the
+    // burst peaked. All intervals are relative to the earliest start.
+    let concurrency_summary: unknown = null;
+    let concurrency_timeline: Array<{ t_ms: number; active: number }> = [];
+    if (intervals.length > 0) {
+      const minStart = intervals.reduce((m, i) => Math.min(m, i.start), Infinity);
+      const maxEnd   = intervals.reduce((m, i) => Math.max(m, i.end),   -Infinity);
+      const durationMs = maxEnd - minStart;
+
+      // Event stream: +1 at start, -1 at end (rel to minStart)
+      const events: Array<{ t: number; delta: number }> = [];
+      for (const i of intervals) {
+        events.push({ t: i.start - minStart, delta: 1 });
+        events.push({ t: i.end   - minStart, delta: -1 });
+      }
+      events.sort((a, b) => a.t - b.t || b.delta - a.delta);
+
+      // Exact peak detection at events; timeline sampled at 1 Hz.
+      let active = 0, peakActive = 0, peakT = 0;
+      const SAMPLE_MS = 1000;
+      let ei = 0;
+      for (let t = 0; t <= durationMs; t += SAMPLE_MS) {
+        while (ei < events.length && events[ei].t <= t) {
+          active += events[ei].delta;
+          if (active > peakActive) { peakActive = active; peakT = events[ei].t; }
+          ei++;
+        }
+        concurrency_timeline.push({ t_ms: t, active });
+      }
+      // Flush any remaining events past the last sample (still tracks peak)
+      while (ei < events.length) {
+        active += events[ei].delta;
+        if (active > peakActive) { peakActive = active; peakT = events[ei].t; }
+        ei++;
+      }
+
+      const meanActive = concurrency_timeline.reduce((s, p) => s + p.active, 0)
+        / Math.max(1, concurrency_timeline.length);
+      concurrency_summary = {
+        peak_concurrent: peakActive,
+        peak_t_ms: peakT,
+        mean_concurrent: Math.round(meanActive),
+        total_run_ms: durationMs,
+        ramp_seconds_configured: provider.rampSeconds,
+        sample_interval_ms: SAMPLE_MS,
+      };
+    }
+
     await pg.flush();
     await tigris.close();
     await tigris.writeMeta({
       ...final,
       latency_distribution,
       error_histogram,
+      ramp_segments,
+      concurrency_summary,
+      concurrency_timeline,
       run_id: RUN_ID,
       provider: PROVIDER,
       ended_at: new Date().toISOString(),
