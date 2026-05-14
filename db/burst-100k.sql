@@ -43,17 +43,21 @@ CREATE INDEX IF NOT EXISTS runs_stuck
 
 
 CREATE TABLE IF NOT EXISTS sandbox_results (
-  run_id        TEXT NOT NULL REFERENCES runs(id),
-  sandbox_idx   INTEGER NOT NULL,                   -- 0 .. concurrencyTarget-1
-  started_at    TIMESTAMPTZ NOT NULL,
-  completed_at  TIMESTAMPTZ,
-  latency_ms    INTEGER,
-  status        TEXT NOT NULL                       -- ok | timeout | http_error | network_error
-                CHECK (status IN ('ok', 'timeout', 'http_error', 'network_error')),
-  http_status   INTEGER,
-  error_code    TEXT,
+  run_id            TEXT NOT NULL REFERENCES runs(id),
+  sandbox_idx       INTEGER NOT NULL,               -- 0 .. concurrencyTarget-1
+  started_at        TIMESTAMPTZ NOT NULL,
+  completed_at      TIMESTAMPTZ,
+  latency_ms        INTEGER,
+  status            TEXT NOT NULL                   -- ok | timeout | http_error | network_error
+                    CHECK (status IN ('ok', 'timeout', 'http_error', 'network_error')),
+  http_status       INTEGER,
+  error_code        TEXT,
+  provider_metadata JSONB,                          -- adapter-exposed primitives (sandbox id, region, etc.)
   PRIMARY KEY (run_id, sandbox_idx)
 );
 
 CREATE INDEX IF NOT EXISTS sandbox_results_run_status
   ON sandbox_results (run_id, status);
+
+-- Idempotent column add for already-existing tables.
+ALTER TABLE sandbox_results ADD COLUMN IF NOT EXISTS provider_metadata JSONB;

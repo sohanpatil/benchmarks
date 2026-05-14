@@ -20,6 +20,12 @@ export interface SandboxResult {
   http_status: number | null;
   error_code: string | null;
   error_message: string | null;
+  /**
+   * Whatever primitive props the adapter put on the returned sandbox object
+   * (e.g. sandbox id, region). Null on failure or when nothing useful is
+   * exposed. Stored as JSONB in Postgres and verbatim in Tigris raw.jsonl.
+   */
+  provider_metadata: Record<string, unknown> | null;
 }
 
 export interface ProgressStats {

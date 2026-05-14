@@ -27,7 +27,7 @@ and [one-hundred-k-mvp-checklist.md](one-hundred-k-mvp-checklist.md).
 | ~~Error-type histogram~~ ✅ Landed | New `timeouts`/`http_errors`/`network_errors` columns on Postgres `runs` (+ matching `error_histogram` object in Tigris `meta.json`). Counted live in the coordinator's `onResult`, no JOIN against `sandbox_results` needed for top-line stats. | — |
 | ~~Ramp-phase latency segments~~ ✅ Landed | `ramp_segments` object in Tigris `meta.json` with `first_25pct` / `middle_50pct` / `last_25pct` buckets, each carrying `idx_range`, `count_ok`, p50/p95/p99/max/mean. Bucketed by `sandbox_idx` since the linear ramp maps idx → start-time. | — |
 | ~~Concurrency at each point in time~~ ✅ Landed | `concurrency_summary` (peak_concurrent, peak_t_ms, mean_concurrent, total_run_ms, sample_interval_ms, ramp_seconds_configured) + `concurrency_timeline` (1Hz samples of `{t_ms, active}`) in Tigris `meta.json`. Computed from per-sandbox `started_at`/`completed_at` via an interval-overlap sweep. | — |
-| **Sandbox IDs / region** if the adapter returns them | Add a `sandbox_id` (or `provider_metadata JSONB`) column on `sandbox_results`, extract from the sandbox object | Cross-reference against provider's own dashboards |
+| ~~Sandbox IDs / region~~ ✅ Landed | `provider_metadata` JSONB column on `sandbox_results` (+ same field in Tigris `raw.jsonl`). Runner reflects every primitive property off the adapter's returned sandbox object, skipping anything that matches a credential-looking regex. On e2b: `{ provider, sandboxId }`. | — |
 
 ---
 

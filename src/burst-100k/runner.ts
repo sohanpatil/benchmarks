@@ -49,11 +49,13 @@ export async function runBurst(
         http_status: null,
         error_code: null,
         error_message: null,
+        provider_metadata: null,
       };
 
       let sandbox: any = null;
       try {
         sandbox = await withTimeout(compute.sandbox.create(sandboxOptions), perRequestTimeoutMs);
+        result.provider_metadata = extractProviderMetadata(sandbox);
       } catch (err: any) {
         errors++;
         result.status = classifyError(err);
@@ -78,6 +80,28 @@ export async function runBurst(
   }
 
   await Promise.all(tasks);
+}
+
+/**
+ * Pull primitive props off the adapter's returned sandbox object so we can
+ * cross-reference against the provider's own dashboards (sandbox id, region,
+ * etc.). Skips anything that looks like a credential and any non-primitive
+ * value to keep the JSON bounded.
+ */
+const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|credential)/i;
+function extractProviderMetadata(sandbox: any): Record<string, unknown> | null {
+  if (!sandbox || typeof sandbox !== 'object') return null;
+  const meta: Record<string, unknown> = {};
+  for (const key of Object.keys(sandbox)) {
+    if (SECRET_KEY_RE.test(key)) continue;
+    const val = (sandbox as any)[key];
+    if (val == null) continue;
+    const t = typeof val;
+    if (t === 'string' || t === 'number' || t === 'boolean') {
+      meta[key] = val;
+    }
+  }
+  return Object.keys(meta).length > 0 ? meta : null;
 }
 
 function classifyError(err: any): SandboxResultStatus {
