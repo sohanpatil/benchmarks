@@ -15,9 +15,18 @@ export interface ProviderConfig {
   destroyTimeoutMs?: number;
 }
 
+export interface StartupBreakdown {
+  /** Time for sandbox.create() to resolve — API round-trip + container scheduling */
+  allocateMs: number;
+  /** Time from create() resolving to first runCommand() returning — shell/runtime readiness */
+  firstCommandMs: number;
+}
+
 export interface TimingResult {
   /** Total time from start to first successful code execution */
   ttiMs: number;
+  /** Per-phase timing breakdown */
+  breakdown?: StartupBreakdown;
   /** Error message if this iteration failed */
   error?: string;
 }
@@ -36,6 +45,10 @@ export interface BenchmarkResult {
   iterations: TimingResult[];
   summary: {
     ttiMs: Stats;
+    breakdown?: {
+      allocateMs: Stats;
+      firstCommandMs: Stats;
+    };
   };
   /** Composite weighted score (0-100, higher = better). Computed post-benchmark. */
   compositeScore?: number;

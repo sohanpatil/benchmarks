@@ -94,6 +94,41 @@ export function printResultsTable(results: BenchmarkResult[]): void {
   }
 
   console.log('  TTI = Time to Interactive. Create + first code execution.\n');
+
+  // Show startup breakdown if available
+  const withBreakdown = sorted.filter(r => !r.skipped && r.summary.breakdown);
+  if (withBreakdown.length > 0) {
+    const bkColWidth = 16;
+    const bkHeader = [
+      pad('Provider', nameWidth),
+      pad('Alloc median (s)', bkColWidth + 2),
+      pad('Alloc p95 (s)', bkColWidth),
+      pad('1st cmd median (s)', bkColWidth + 2),
+      pad('1st cmd p95 (s)', bkColWidth),
+    ].join(' | ');
+    const bkSeparator = [
+      '-'.repeat(nameWidth),
+      '-'.repeat(bkColWidth + 2),
+      '-'.repeat(bkColWidth),
+      '-'.repeat(bkColWidth + 2),
+      '-'.repeat(bkColWidth),
+    ].join('-+-');
+
+    console.log('  Startup breakdown (allocate = sandbox.create(), 1st cmd = shell readiness):');
+    console.log(bkHeader);
+    console.log(bkSeparator);
+    for (const r of withBreakdown) {
+      const bd = r.summary.breakdown!;
+      console.log([
+        pad(r.provider, nameWidth),
+        pad(formatSeconds(bd.allocateMs.median), bkColWidth + 2),
+        pad(formatSeconds(bd.allocateMs.p95), bkColWidth),
+        pad(formatSeconds(bd.firstCommandMs.median), bkColWidth + 2),
+        pad(formatSeconds(bd.firstCommandMs.p95), bkColWidth),
+      ].join(' | '));
+    }
+    console.log('');
+  }
 }
 
 function pad(str: string, width: number): string {
@@ -140,6 +175,12 @@ export async function writeResultsJson(results: BenchmarkResult[], outPath: stri
     } : {}),
     iterations: r.iterations.map(i => ({
       ttiMs: round(i.ttiMs),
+      ...(i.breakdown ? {
+        breakdown: {
+          allocateMs: round(i.breakdown.allocateMs),
+          firstCommandMs: round(i.breakdown.firstCommandMs),
+        },
+      } : {}),
       ...(i.error ? { error: i.error } : {}),
     })),
     summary: {
@@ -148,6 +189,20 @@ export async function writeResultsJson(results: BenchmarkResult[], outPath: stri
         p95: round(r.summary.ttiMs.p95),
         p99: round(r.summary.ttiMs.p99),
       },
+      ...(r.summary.breakdown ? {
+        breakdown: {
+          allocateMs: {
+            median: round(r.summary.breakdown.allocateMs.median),
+            p95: round(r.summary.breakdown.allocateMs.p95),
+            p99: round(r.summary.breakdown.allocateMs.p99),
+          },
+          firstCommandMs: {
+            median: round(r.summary.breakdown.firstCommandMs.median),
+            p95: round(r.summary.breakdown.firstCommandMs.p95),
+            p99: round(r.summary.breakdown.firstCommandMs.p99),
+          },
+        },
+      } : {}),
     },
     ...(r.compositeScore !== undefined ? { compositeScore: round(r.compositeScore) } : {}),
     ...(r.successRate !== undefined ? { successRate: round(r.successRate) } : {}),

@@ -49,6 +49,7 @@ export async function runBenchmark(config: ProviderConfig): Promise<BenchmarkRes
   }
 
   const successful = results.filter(r => !r.error);
+  const withBreakdown = successful.filter(r => r.breakdown);
 
   return {
     provider: name,
@@ -57,6 +58,12 @@ export async function runBenchmark(config: ProviderConfig): Promise<BenchmarkRes
       ttiMs: successful.length > 0
         ? computeStats(successful.map(r => r.ttiMs))
         : { median: 0, p95: 0, p99: 0 },
+      ...(withBreakdown.length > 0 && {
+        breakdown: {
+          allocateMs: computeStats(withBreakdown.map(r => r.breakdown!.allocateMs)),
+          firstCommandMs: computeStats(withBreakdown.map(r => r.breakdown!.firstCommandMs)),
+        },
+      }),
     },
   };
 }
@@ -116,6 +123,7 @@ export async function runIteration(
     const start = performance.now();
 
     sandbox = await withTimeout(compute.sandbox.create(sandboxOptions), timeout, 'Sandbox creation timed out');
+    const afterCreate = performance.now();
 
     const markerA = '/tmp/.bench_ephemeral_check';
     const markerB = '/var/tmp/.bench_ephemeral_check';
@@ -156,6 +164,7 @@ export async function runIteration(
       30_000,
       'Sandbox identity check timed out'
     ) as { exitCode: number; stdout?: string; stderr?: string };
+    const afterFirstCommand = performance.now();
 
     if (identityResult.exitCode !== 0) {
       throw new Error(`Sandbox identity check failed with exit code ${identityResult.exitCode}: ${identityResult.stderr || 'Unknown error'}`);
@@ -190,7 +199,13 @@ export async function runIteration(
 
     const ttiMs = performance.now() - start;
 
-    return { ttiMs };
+    return {
+      ttiMs,
+      breakdown: {
+        allocateMs: afterCreate - start,
+        firstCommandMs: afterFirstCommand - afterCreate,
+      },
+    };
   } finally {
     if (sandbox) {
       let timer: ReturnType<typeof setTimeout> | undefined;
