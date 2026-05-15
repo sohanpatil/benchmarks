@@ -97,23 +97,24 @@ markers rendered as `━━━ … ━━━`. No ANSI colors so the file stored
 | **Heartbeat** | `[stat] heartbeat done=N/total in_flight=Y errors=Z` every 30s |
 | **Shutdown / completion** | `━━━ flushing sinks and writing summary ━━━`, `Postgres: flushing remaining sandbox_results batch`, `Tigris: closing multipart upload for raw.jsonl`, `Tigris: writing metrics.jsonl`, `Tigris: writing meta.json`, `Postgres: marking run done with final stats`, `━━━ run complete ━━━`, `N/N succeeded (XX.X%)`, `latency p50=…ms p99=…ms`, optional `[warn] errors: …` |
 
-### Volume control
+### Volume
 
 Implemented in [src/burst-100k/logger.ts](src/burst-100k/logger.ts) and
-[src/burst-100k/runner.ts](src/burst-100k/runner.ts). `pickSamplingPeriod()`
-keeps per-sandbox log lines bounded regardless of N:
+[src/burst-100k/runner.ts](src/burst-100k/runner.ts). **Every sandbox gets
+a log line at every N** — no sampling. At full 100k that's ~100k `[ok]`
+lines plus phase markers, heartbeats, and progress milestones, producing a
+log file in the low tens of MB. Uploaded to Tigris on every heartbeat
+(30s) so partial data is durable.
 
 | Concurrency | Sandbox `[ok]` lines logged | Approx total log size |
 | --- | --- | --- |
-| 25 | 25 (every one) | ~7 KB |
-| 100 | 100 (every one) | ~16 KB |
-| 1,000 | 1,000 (every one) | ~140 KB |
-| 10,000 | ~100 sampled + every error | ~30 KB |
-| 100,000 | ~100 sampled + every error | ~50 KB |
+| 25 | 25 | ~7 KB |
+| 100 | 100 | ~16 KB |
+| 1,000 | 1,000 | ~140 KB |
+| 10,000 | 10,000 | ~1.4 MB |
+| 100,000 | 100,000 | ~14 MB |
 
-`[error]` lines are always emitted regardless of sampling, so failures are
-never silently dropped. Per-sandbox detail at high N still lives in the
-full `raw.jsonl` — the log is the human-readable timeline.
+`[error]` lines are always emitted — failures are never silently dropped.
 
 ### Debug verbosity
 

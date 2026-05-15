@@ -1,5 +1,5 @@
 import pLimit from 'p-limit';
-import { log, pickSamplingPeriod } from './logger.js';
+import { log } from './logger.js';
 import type { BurstProviderConfig, SandboxResult, SandboxResultStatus, ProgressStats } from './types.js';
 
 export interface RunnerCallbacks {
@@ -29,10 +29,6 @@ export async function runBurst(
   let errors = 0;
   const startTime = Date.now();
 
-  // Per-sandbox log sampling so coordinator.log stays bounded at high N.
-  // At N=100 every sandbox is logged; at N=100k roughly every 1000th is
-  // logged plus every error.
-  const samplingPeriod = pickSamplingPeriod(concurrencyTarget);
   // Milestone progress lines every ~10% of work done.
   const progressStep = Math.max(1, Math.floor(concurrencyTarget / 10));
   let nextProgressMilestone = progressStep;
@@ -79,15 +75,12 @@ export async function runBurst(
         try { await callbacks.onResult(result); } catch (e) { /* swallow */ }
         callbacks.onProgress({ done, in_flight, errors });
 
-        // Per-sandbox log line — always for errors; for ok, only if this idx
-        // falls on the sampling period or it's the very last one.
+        // Per-sandbox log line — every sandbox at every N, plus every error.
         if (result.status === 'ok') {
-          if (idx % samplingPeriod === 0 || done === concurrencyTarget) {
-            const sb = result.provider_metadata?.sandboxId
-              ? ` — sandboxId=${result.provider_metadata.sandboxId}`
-              : '';
-            log.ok(`sandbox ${idx} created in ${result.latency_ms}ms${sb}`);
-          }
+          const sb = result.provider_metadata?.sandboxId
+            ? ` — sandboxId=${result.provider_metadata.sandboxId}`
+            : '';
+          log.ok(`sandbox ${idx} created in ${result.latency_ms}ms${sb}`);
         } else {
           log.error(`sandbox ${idx} ${result.status} (http=${result.http_status ?? '-'} ` +
             `code=${result.error_code ?? '-'}): ${result.error_message ?? '(no message)'}`);

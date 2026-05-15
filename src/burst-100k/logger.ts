@@ -30,12 +30,3 @@ export const log = {
   },
   phase(title: string): void { write('info', `━━━ ${title} ━━━`); },
 };
-
-/**
- * Pick a sandbox-result sampling period so that across `totalN` requests we
- * log on the order of ~target lines. At small N (≤ 1000) log every one.
- */
-export function pickSamplingPeriod(totalN: number, target = 100): number {
-  if (totalN <= 1000) return 1;
-  return Math.max(1, Math.ceil(totalN / target));
-}
