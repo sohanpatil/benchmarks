@@ -77,9 +77,10 @@ async function main() {
   log.ok('Tigris: sink ready');
 
   let lastStats: ProgressStats = { done: 0, in_flight: 0, errors: 0 };
-  // Track {idx, ms} for ok sandboxes so we can bucket by ramp position at
-  // run-end. `latencies` (sorted ms array) is derived from this.
-  const okResults: Array<{ idx: number; ms: number }> = [];
+  // Track per-ok-sandbox phase timings for the analytical outputs.
+  //   ms                = allocate phase (sandbox.create() time, == latency_ms)
+  //   first_command_ms  = readiness phase (`node -v` after create); null when cmd failed
+  const okResults: Array<{ idx: number; ms: number; first_command_ms: number | null }> = [];
   // Track every sandbox's start/end (epoch ms) — including errors — so we
   // can reconstruct concurrency-over-time after the burst.
   const intervals: Array<{ start: number; end: number }> = [];
@@ -200,7 +201,11 @@ async function main() {
     await runBurst(provider, compute, {
       async onResult(result) {
         if (result.status === 'ok') {
-          okResults.push({ idx: result.sandbox_idx, ms: result.latency_ms });
+          okResults.push({
+            idx: result.sandbox_idx,
+            ms: result.latency_ms,
+            first_command_ms: result.first_command_ms,
+          });
         } else {
           errorCounts[result.status]++;
         }
@@ -243,21 +248,37 @@ async function main() {
 
     // Full latency distribution, written to Tigris meta.json only. Postgres
     // keeps just p50/p99 for cheap filtering; this is for retrospective
-    // analysis of tail behaviour.
-    const latency_distribution = latencies.length === 0 ? null : {
-      count: latencies.length,
-      min_ms:  latencies[0],
-      p10_ms:  pct(0.10),
-      p25_ms:  pct(0.25),
-      p50_ms:  pct(0.50),
-      p75_ms:  pct(0.75),
-      p90_ms:  pct(0.90),
-      p95_ms:  pct(0.95),
-      p99_ms:  pct(0.99),
-      p999_ms: pct(0.999),
-      max_ms:  latencies[latencies.length - 1],
-      mean_ms: Math.round(latencies.reduce((s, v) => s + v, 0) / latencies.length),
+    // analysis of tail behaviour. `latency_distribution` covers the
+    // allocate phase only — the "first_command" and combined "tti"
+    // distributions are computed below.
+    const distributionOf = (values: number[]) => {
+      if (values.length === 0) return null;
+      const sorted = [...values].sort((a, b) => a - b);
+      const p = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+      return {
+        count: sorted.length,
+        min_ms:  sorted[0],
+        p10_ms:  p(0.10),
+        p25_ms:  p(0.25),
+        p50_ms:  p(0.50),
+        p75_ms:  p(0.75),
+        p90_ms:  p(0.90),
+        p95_ms:  p(0.95),
+        p99_ms:  p(0.99),
+        p999_ms: p(0.999),
+        max_ms:  sorted[sorted.length - 1],
+        mean_ms: Math.round(sorted.reduce((s, v) => s + v, 0) / sorted.length),
+      };
     };
+    const latency_distribution = distributionOf(latencies);
+    const first_command_values = okResults
+      .map(r => r.first_command_ms)
+      .filter((v): v is number => v != null);
+    const first_command_distribution = distributionOf(first_command_values);
+    const tti_values = okResults
+      .filter(r => r.first_command_ms != null)
+      .map(r => r.ms + (r.first_command_ms as number));
+    const tti_distribution = distributionOf(tti_values);
 
     // Ramp-phase segments. Sandbox starts are spread linearly over rampSeconds
     // by index, so bucketing by idx ranges is equivalent to bucketing by
@@ -368,6 +389,8 @@ async function main() {
     await tigris.writeMeta({
       ...final,
       latency_distribution,
+      first_command_distribution,
+      tti_distribution,
       error_histogram,
       ramp_segments,
       concurrency_summary,

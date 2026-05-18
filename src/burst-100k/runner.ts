@@ -2,6 +2,8 @@ import pLimit from 'p-limit';
 import { log } from './logger.js';
 import type { BurstProviderConfig, SandboxResult, SandboxResultStatus, ProgressStats } from './types.js';
 
+const FIRST_COMMAND_TIMEOUT_MS = 30_000;
+
 export interface RunnerCallbacks {
   onResult: (result: SandboxResult) => Promise<void> | void;
   onProgress: (stats: ProgressStats) => void;
@@ -50,6 +52,7 @@ export async function runBurst(
         started_at,
         completed_at: '',
         latency_ms: 0,
+        first_command_ms: null,
         status: 'ok',
         http_status: null,
         error_code: null,
@@ -58,9 +61,25 @@ export async function runBurst(
       };
 
       let sandbox: any = null;
+      let allocateCaptured = false;
       try {
         sandbox = await withTimeout(compute.sandbox.create(sandboxOptions), perRequestTimeoutMs);
+        // Capture the allocate-phase latency immediately, before doing
+        // anything else. latency_ms keeps its existing semantics: create only.
+        result.latency_ms = Math.round(performance.now() - t0);
+        allocateCaptured = true;
         result.provider_metadata = extractProviderMetadata(sandbox);
+
+        // First-command phase: matches the daily benchmark's readiness check.
+        // Failure here doesn't mark the sandbox as failed (create succeeded),
+        // it just leaves first_command_ms null and emits a warning.
+        const afterCreate = performance.now();
+        try {
+          await withTimeout(sandbox.runCommand('node -v'), FIRST_COMMAND_TIMEOUT_MS);
+          result.first_command_ms = Math.round(performance.now() - afterCreate);
+        } catch (cmdErr: any) {
+          log.warn(`sandbox ${idx} first command failed: ${cmdErr?.message ?? cmdErr}`);
+        }
       } catch (err: any) {
         errors++;
         result.status = classifyError(err);
@@ -68,7 +87,10 @@ export async function runBurst(
         result.error_code = err?.code ?? null;
         result.error_message = truncate(err?.message ?? String(err), 500);
       } finally {
-        result.latency_ms = Math.round(performance.now() - t0);
+        // For the create-failure path, latency_ms is time-to-failure.
+        if (!allocateCaptured) {
+          result.latency_ms = Math.round(performance.now() - t0);
+        }
         result.completed_at = new Date().toISOString();
         in_flight--;
         done++;

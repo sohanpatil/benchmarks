@@ -15,7 +15,19 @@ export interface SandboxResult {
   sandbox_idx: number;
   started_at: string;        // ISO-8601
   completed_at: string;      // ISO-8601
+  /**
+   * "Allocate" phase: time for `sandbox.create()` to resolve.
+   * Named `latency_ms` for backward-compat with older runs/queries.
+   * On create-failure this is the time-to-failure.
+   */
   latency_ms: number;
+  /**
+   * "First command" phase: time for `sandbox.runCommand('node -v')` to
+   * return after `create()` resolved. Null when create failed (never
+   * attempted) or when the command itself failed (measurement aborted).
+   * Matches the daily benchmark's `node -v` readiness check.
+   */
+  first_command_ms: number | null;
   status: SandboxResultStatus;
   http_status: number | null;
   error_code: string | null;

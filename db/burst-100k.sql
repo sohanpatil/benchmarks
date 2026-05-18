@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS sandbox_results (
   sandbox_idx       INTEGER NOT NULL,               -- 0 .. concurrencyTarget-1
   started_at        TIMESTAMPTZ NOT NULL,
   completed_at      TIMESTAMPTZ,
-  latency_ms        INTEGER,
+  latency_ms        INTEGER,                        -- "allocate" phase: sandbox.create() time
+  first_command_ms  INTEGER,                        -- "first command" phase: runCommand('node -v') time; NULL if skipped/failed
   status            TEXT NOT NULL                   -- ok | timeout | http_error | network_error
                     CHECK (status IN ('ok', 'timeout', 'http_error', 'network_error')),
   http_status       INTEGER,
@@ -59,5 +60,6 @@ CREATE TABLE IF NOT EXISTS sandbox_results (
 CREATE INDEX IF NOT EXISTS sandbox_results_run_status
   ON sandbox_results (run_id, status);
 
--- Idempotent column add for already-existing tables.
+-- Idempotent column adds for already-existing tables.
 ALTER TABLE sandbox_results ADD COLUMN IF NOT EXISTS provider_metadata JSONB;
+ALTER TABLE sandbox_results ADD COLUMN IF NOT EXISTS first_command_ms  INTEGER;

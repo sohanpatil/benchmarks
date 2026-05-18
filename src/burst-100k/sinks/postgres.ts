@@ -69,7 +69,7 @@ export class PostgresSink {
     let pi = 1;
     for (const r of batch) {
       placeholders.push(
-        `($${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++})`,
+        `($${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++})`,
       );
       values.push(
         this.runId,
@@ -77,6 +77,7 @@ export class PostgresSink {
         r.started_at,
         r.completed_at,
         r.latency_ms,
+        r.first_command_ms,
         r.status,
         r.http_status,
         r.error_code,
@@ -85,7 +86,7 @@ export class PostgresSink {
     }
     const sql = `
       INSERT INTO sandbox_results
-        (run_id, sandbox_idx, started_at, completed_at, latency_ms, status, http_status, error_code, provider_metadata)
+        (run_id, sandbox_idx, started_at, completed_at, latency_ms, first_command_ms, status, http_status, error_code, provider_metadata)
       VALUES ${placeholders.join(', ')}
       ON CONFLICT (run_id, sandbox_idx) DO NOTHING
     `;
