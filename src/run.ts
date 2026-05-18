@@ -7,16 +7,20 @@ import { fileURLToPath } from 'url';
 import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
+import { runWarmBenchmark } from './sandbox/warm.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import { runBrowserBenchmark, writeBrowserResultsJson } from './browser/benchmark.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
+import { printWarmResultsTable, writeWarmResultsJson } from './sandbox/warm-table.js';
 import { providers } from './sandbox/providers.js';
 import { storageProviders } from './storage/providers.js';
 import { browserProviders } from './browser/providers.js';
 import { computeCompositeScores } from './sandbox/scoring.js';
+import { computeWarmCompositeScores } from './sandbox/warm-scoring.js';
 import { computeStorageCompositeScores } from './storage/scoring.js';
 import { computeBrowserCompositeScores } from './browser/scoring.js';
 import type { BenchmarkResult, BenchmarkMode } from './sandbox/types.js';
+import type { WarmBenchmarkResult } from './sandbox/warm-types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
 
@@ -31,6 +35,8 @@ const concurrency = parseInt(getArgValue(args, '--concurrency') || '100', 10);
 const storageConcurrency = parseInt(getArgValue(args, '--storage-concurrency') || '1', 10);
 const staggerDelay = parseInt(getArgValue(args, '--stagger-delay') || '200', 10);
 const fileSizeArg = getArgValue(args, '--file-size') || '10MB';
+const warmSamplesArg = getArgValue(args, '--samples');
+const warmSamples = warmSamplesArg ? parseInt(warmSamplesArg, 10) : undefined;
 
 function getArgValue(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
@@ -38,22 +44,24 @@ function getArgValue(args: string[], flag: string): string | undefined {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] {
+function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['warm'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'browser') return ['browser'];
+  if (rawMode === 'warm') return ['warm'];
   const m = rawMode === 'concurrent' ? 'burst' : rawMode as BenchmarkMode;
   return [m];
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: BenchmarkMode | 'storage'): string {
+function modeToDir(m: BenchmarkMode | 'storage' | 'warm'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
     case 'burst':
     case 'concurrent': return 'burst_tti';
     case 'storage': return 'storage';
+    case 'warm': return 'warm_ops';
     default: return `${m}_tti`;
   }
 }
@@ -174,6 +182,40 @@ async function runStorage(toRun: typeof storageProviders, fileSizeLabel: string)
   console.log(`Copied latest: ${latestPath}`);
 }
 
+async function runWarm(toRun: typeof providers): Promise<void> {
+  const effectiveSamples = warmSamples ?? 100;
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: WARM');
+  console.log(`  Samples per op: ${effectiveSamples}`);
+  console.log(`  Payload: 1MB`);
+  console.log('='.repeat(70));
+
+  const results: WarmBenchmarkResult[] = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runWarmBenchmark({
+      ...providerConfig,
+      samplesPerOp: effectiveSamples,
+    });
+    results.push(result);
+  }
+
+  computeWarmCompositeScores(results);
+  printWarmResultsTable(results);
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const subDir = modeToDir('warm');
+  const resultsDir = path.resolve(__dirname, `../results/${subDir}`);
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeWarmResultsJson(results, outPath);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
 async function runBrowser(toRun: typeof browserProviders): Promise<void> {
   console.log('\n' + '='.repeat(70));
   console.log('  MODE: BROWSER');
@@ -220,6 +262,26 @@ async function runBrowser(toRun: typeof browserProviders): Promise<void> {
 
 async function main() {
   const modes = getModesToRun();
+
+  // Handle warm mode separately
+  if (modes[0] === 'warm') {
+    console.log('ComputeSDK Warm Sandbox Operation Benchmarks');
+    console.log(`Date: ${new Date().toISOString()}\n`);
+
+    const toRun = providerFilter
+      ? providers.filter(p => p.name === providerFilter)
+      : providers;
+
+    if (toRun.length === 0) {
+      console.error(`Unknown provider: ${providerFilter}`);
+      console.error(`Available: ${providers.map(p => p.name).join(', ')}`);
+      process.exit(1);
+    }
+
+    await runWarm(toRun);
+    console.log('\nAll warm tests complete.');
+    return;
+  }
 
   // Handle browser mode separately
   if (modes[0] === 'browser') {

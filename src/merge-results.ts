@@ -19,10 +19,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { computeCompositeScores } from './sandbox/scoring.js';
+import { computeWarmCompositeScores } from './sandbox/warm-scoring.js';
 import { computeStorageCompositeScores, sortStorageByCompositeScore } from './storage/scoring.js';
 import { computeBrowserCompositeScores, sortBrowserByCompositeScore } from './browser/scoring.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
+import { printWarmResultsTable, writeWarmResultsJson } from './sandbox/warm-table.js';
 import type { BenchmarkResult } from './sandbox/types.js';
+import type { WarmBenchmarkResult } from './sandbox/warm-types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
 
@@ -372,7 +375,74 @@ async function mainBrowser() {
   console.log(`Copied latest: ${latestPath}`);
 }
 
-const runner = mergeMode === 'storage' ? mainStorage : mergeMode === 'browser' ? mainBrowser : main;
+/**
+ * Merge warm-ops benchmark results.
+ *
+ * Each per-provider artifact lives at:
+ *   artifacts/results-<provider>/warm_ops/latest.json
+ *
+ * Same single-provider-preference dedup as the sandbox/storage paths.
+ */
+async function mainWarm() {
+  const jsonFiles: string[] = [];
+  function walk(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === 'latest.json') jsonFiles.push(full);
+    }
+  }
+  walk(inputDir!);
+
+  if (jsonFiles.length === 0) {
+    console.error(`No latest.json files found in ${inputDir}`);
+    process.exit(1);
+  }
+
+  const seen = new Map<string, { result: WarmBenchmarkResult; fromSingleProvider: boolean }>();
+
+  for (const file of jsonFiles) {
+    const dirName = path.basename(path.dirname(file));
+    if (dirName !== 'warm_ops') continue;
+
+    const raw = JSON.parse(fs.readFileSync(file, 'utf-8')) as { results: WarmBenchmarkResult[] };
+    const fromSingleProvider = raw.results.length === 1;
+    for (const result of raw.results) {
+      const existing = seen.get(result.provider);
+      if (!existing || (fromSingleProvider && !existing.fromSingleProvider)) {
+        seen.set(result.provider, { result, fromSingleProvider });
+      }
+    }
+  }
+
+  const deduped = Array.from(seen.values()).map(e => e.result);
+  if (deduped.length === 0) {
+    console.error('No warm_ops results found in artifacts');
+    process.exit(1);
+  }
+  console.log(`\nMerging ${deduped.length} provider results for mode: warm`);
+
+  computeWarmCompositeScores(deduped);
+  printWarmResultsTable(deduped);
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const resultsDir = path.resolve(ROOT, 'results/warm_ops');
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeWarmResultsJson(deduped, outPath);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
+const runner =
+  mergeMode === 'storage' ? mainStorage :
+  mergeMode === 'browser' ? mainBrowser :
+  mergeMode === 'warm' ? mainWarm :
+  main;
 runner().catch(err => {
   console.error('Merge failed:', err);
   process.exit(1);

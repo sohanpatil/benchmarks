@@ -10,6 +10,10 @@
 
 ![Burst TTI](./burst_tti.svg)
 
+### [Warm Sandbox Ops](#warm-sandbox-ops)
+
+![Warm Sandbox Ops](./warm_ops.svg)
+
 ### [Pricing Comparison](#pricing-comparison)
 
 ![Pricing Comparison](./pricing.svg)
@@ -56,6 +60,8 @@ Each benchmark creates a fresh sandbox, runs `node -v`, and records wall-clock t
 
 **Burst** — 100 sandboxes are created simultaneously with no delay between launches. Tests how providers handle sudden spikes — provisioning queue depth, rate limiting, and failure rates under peak demand.
 
+**Warm-ops** — One sandbox per provider is provisioned and kept alive, then five ComputeSDK operations (`runCommand`, `filesystem.writeFile`/`readFile`/`readdir`, and 1MB stdout streaming) are timed 100 times each. Measures steady-state latency *after* the cold start the TTI tests stop at — the hop cost that agent loops pay on every tool call.
+
 For each provider we report min, max, median, P95, P99, and average TTI, plus a **composite score** (0–100) that combines weighted timing metrics with success rate. Providers must be both fast *and* reliable to score well.
 
 ### Composite Score
@@ -99,6 +105,7 @@ Sponsors enable independent benchmark infrastructure.
 - [x] Add P95 & P99
 - [x] TTI n=100 test
 - [x] TTI n=100 concurrency test (staggered + burst)
+- [x] Warm-sandbox operation latency (cmd RTT + filesystem ops)
 - [ ] 10,000 concurrent sandbox stress test
 - [ ] Cold start vs warm start metrics
 - [ ] Multi-region testing

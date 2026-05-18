@@ -1,0 +1,141 @@
+name: Warm Sandbox Benchmark
+
+# Provisions a single Namespace VM that iterates every configured sandbox
+# provider and runs the warm-ops benchmark. Results land in Tigris under
+# warm-ops/<run_id>/. This workflow then polls for the done marker, pulls
+# results back, regenerates warm_ops.svg, and commits.
+
+on:
+  # Manual-only for now. A daily cron will be added once we're confident the
+  # VM-based run is stable. To add it later:
+  #   schedule:
+  #     - cron: '0 1 * * *'  # 01:00 UTC, 1h after sandbox-benchmarks
+  workflow_dispatch:
+    inputs:
+      samples_per_op:
+        description: 'Samples per op (default 100)'
+        required: false
+        default: '100'
+      provider_filter:
+        description: 'Limit to a single provider (leave empty for all)'
+        required: false
+        default: ''
+      machine_type:
+        description: 'Namespace machine type'
+        required: false
+        default: '4x8'
+      duration:
+        description: 'Namespace VM duration (must outlast the benchmark)'
+        required: false
+        default: '2h'
+      collect_timeout_seconds:
+        description: 'How long the collect step waits for done.json'
+        required: false
+        default: '5400'
+
+concurrency:
+  group: warm-benchmark
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  warm:
+    name: Warm Ops (1 VM, all providers)
+    runs-on: namespace-profile-default
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install dependencies
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            npm update
+          else
+            npm ci
+          fi
+
+      - name: Compute RUN_ID
+        id: runid
+        run: |
+          RUN_ID="warm-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_SHA:0:8}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "[runid] $RUN_ID"
+
+      - name: Launch VM
+        env:
+          RUN_ID: ${{ steps.runid.outputs.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          TIGRIS_STORAGE_BUCKET: sandbox-benchmarks
+          TIGRIS_STORAGE_ACCESS_KEY_ID: ${{ secrets.TIGRIS_STORAGE_ACCESS_KEY_ID }}
+          TIGRIS_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_STORAGE_SECRET_ACCESS_KEY }}
+          TIGRIS_STORAGE_ENDPOINT: ${{ secrets.TIGRIS_STORAGE_ENDPOINT }}
+          MACHINE_TYPE: ${{ github.event.inputs.machine_type || '4x8' }}
+          DURATION: ${{ github.event.inputs.duration || '2h' }}
+          SAMPLES_PER_OP: ${{ github.event.inputs.samples_per_op || '100' }}
+          PROVIDER_FILTER: ${{ github.event.inputs.provider_filter }}
+          # Provider creds forwarded to the launch script, which forwards them
+          # to the VM. Coordinator skips providers whose required vars are
+          # missing — no need to gate per-provider here.
+          ARCHIL_API_KEY: ${{ secrets.ARCHIL_API_KEY }}
+          ARCHIL_REGION: ${{ secrets.ARCHIL_REGION }}
+          ARCHIL_DISK_ID: ${{ secrets.ARCHIL_DISK_ID }}
+          BL_API_KEY: ${{ secrets.BL_API_KEY }}
+          BL_WORKSPACE: ${{ secrets.BL_WORKSPACE }}
+          CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
+          CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
+          CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          DECLAW_API_KEY: ${{ secrets.DECLAW_API_KEY }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          HOPX_API_KEY: ${{ secrets.HOPX_API_KEY }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+          RUNLOOP_API_KEY: ${{ secrets.RUNLOOP_API_KEY }}
+          SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
+          TENSORLAKE_API_KEY: ${{ secrets.TENSORLAKE_API_KEY }}
+          UPSTASH_BOX_API_KEY: ${{ secrets.UPSTASH_BOX_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npm run warm:launch
+
+      - name: Collect results from Tigris
+        env:
+          TIGRIS_STORAGE_BUCKET: sandbox-benchmarks
+          TIGRIS_STORAGE_ACCESS_KEY_ID: ${{ secrets.TIGRIS_STORAGE_ACCESS_KEY_ID }}
+          TIGRIS_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_STORAGE_SECRET_ACCESS_KEY }}
+          TIGRIS_STORAGE_ENDPOINT: ${{ secrets.TIGRIS_STORAGE_ENDPOINT }}
+        run: |
+          npm run warm:collect -- \
+            --run-id ${{ steps.runid.outputs.run_id }} \
+            --timeout-seconds ${{ github.event.inputs.collect_timeout_seconds || '5400' }}
+
+      - name: Regenerate warm SVG
+        run: npm run generate-warm-svg
+
+      - name: Upload SVG as artifact (PR/dispatch)
+        if: github.event_name != 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: warm-benchmark-svg
+          path: |
+            warm_ops.svg
+            results/warm_ops/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Commit and push
+        if: github.event_name == 'schedule'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add warm_ops.svg results/warm_ops/
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update warm benchmark results [skip ci]"
+          git push

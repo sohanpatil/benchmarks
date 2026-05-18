@@ -109,6 +109,57 @@ Each sandbox still measures its own individual TTI. Additionally, we capture a *
 - Rate limiting behavior — some providers throttle after N requests/second
 - Sustainable throughput under steady load
 
+### Warm Sandbox Operations
+
+The TTI tests stop the clock the moment the first command returns. **Warm-ops** picks up where they leave off: it provisions one sandbox per provider, drains the cold start with a throwaway `node -v`, and then measures the steady-state latency of the ComputeSDK calls developers loop over once the sandbox is interactive.
+
+```bash
+npm run bench:warm
+```
+
+| Parameter | Default |
+|-----------|---------|
+| Samples per op | 100 |
+| Payload size | 1 MB (for read/write/stdout ops) |
+| Per-op timeout | 10 seconds |
+| Sandboxes per provider | 1 (reused across all ops) |
+
+Five operations are measured on the same warm sandbox:
+
+| Op | What it measures |
+|----|------------------|
+| `runCommand('true')` | Control-plane RTT — every agent tool call pays this |
+| `filesystem.writeFile` 1 MB | Upload throughput via the agent channel |
+| `filesystem.readFile` 1 MB | Download throughput via the agent channel |
+| `filesystem.readdir('/tmp')` | Metadata round-trip |
+| `runCommand` returning 1 MB stdout | Output streaming throughput |
+
+To avoid one provider's quirk poisoning another's score, `writeFile` rotates the target path on every call, and `readFile` reads from a fixture written once during setup. Providers without a `sandbox.filesystem` surface are marked **skipped** (not failed) so they don't crush the leaderboard for opting out.
+
+**Why warm-ops matters:** AI agents and code-exec frontends do *tens* of `runCommand` and `writeFile` calls per cold start. Per-call RTT often dominates total latency, and the TTI suite doesn't see any of it. Warm-ops also exposes a real architectural axis the TTI suite hides — providers with persistent agent channels (websocket / gRPC) look very different from providers that POST and poll per command, but TTI alone treats them identically.
+
+**Scoring.** Each op has its own latency ceiling tuned to its channel:
+
+| Op | Ceiling |
+|----|---------|
+| `runCommand` RTT | 2,000 ms |
+| `readdir` | 2,000 ms |
+| `writeFile` 1 MB | 5,000 ms |
+| `readFile` 1 MB | 5,000 ms |
+| `runCommand` 1 MB stdout | 5,000 ms |
+
+Within each op, the same `100 × (1 − value / ceiling)` formula is applied to median (60%) / p95 (25%) / p99 (15%). The per-op scores are then combined with weights reflecting how often each op shows up in real agent loops:
+
+| Op | Weight |
+|----|--------|
+| `runCommand` RTT | 0.40 |
+| `writeFile` 1 MB | 0.20 |
+| `readFile` 1 MB | 0.20 |
+| `runCommand` 1 MB stdout | 0.15 |
+| `readdir` | 0.05 |
+
+Final composite = `weighted-mean-of-op-scores × successRate`, with success rate counted across every sample of every op. Same reliability-is-non-negotiable rule as TTI.
+
 ### Burst TTI
 
 All sandboxes are created simultaneously — no waiting between launches.
@@ -143,6 +194,7 @@ npm run bench -- --provider e2b        # All 3 tests, single provider
 npm run bench:sequential               # Sequential only
 npm run bench:staggered                # Staggered only
 npm run bench:burst                    # Burst only
+npm run bench:warm                     # Warm-ops only
 ```
 
 ## Test Configuration
