@@ -29,6 +29,27 @@ RUN_ID="${RUN_ID:-warm-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_SHA:0:8}}"
 DURATION="${DURATION:-2h}"
 MACHINE_TYPE="${MACHINE_TYPE:-4x8}"
 
+# `NSC_TOKEN` is the @computesdk/namespace SDK token (used inside the VM to
+# create sandboxes for the namespace *provider* benchmark). The `nsc` CLI
+# reads the same env var and, if set, prefers it over the local login
+# token. Stash the SDK token under a different name so the launching CLI
+# falls back to `nsc login` auth, then re-emit it as NSC_TOKEN inside the
+# VM startup script.
+SANDBOX_NSC_TOKEN="${NSC_TOKEN:-}"
+unset NSC_TOKEN
+
+# `NSC_TOKEN_FILE`, if set, overrides the default `nsc login` token path.
+# We've seen it leak in with the literal value "./NSC_TOKEN_FILE.json"
+# from stale shell setups, which makes the CLI fail before it even checks
+# the login keychain. Force it to the real login token if one exists.
+if [ -f "$HOME/.config/ns/token.json" ]; then
+  export NSC_TOKEN_FILE="$HOME/.config/ns/token.json"
+elif [ -n "${NSC_TOKEN_FILE:-}" ] && [ ! -f "$NSC_TOKEN_FILE" ]; then
+  echo "[launch] WARNING: NSC_TOKEN_FILE=$NSC_TOKEN_FILE points to a missing file" >&2
+  echo "[launch]          and ~/.config/ns/token.json doesn't exist either." >&2
+  echo "[launch]          Run \`nsc login\` first." >&2
+fi
+
 echo "[launch] RUN_ID=$RUN_ID duration=$DURATION machine=$MACHINE_TYPE"
 echo "[launch]   tigris=s3://${TIGRIS_STORAGE_BUCKET}/warm-ops/${RUN_ID}/"
 if [ -n "${SAMPLES_PER_OP:-}" ]; then
@@ -90,6 +111,11 @@ trap 'rm -f "$STARTUP_FILE" "$CIDFILE"' EXIT
   if [ -n "${PROVIDER_FILTER:-}" ]; then
     printf 'export PROVIDER_FILTER=%q\n' "$PROVIDER_FILTER"
   fi
+  # NSC_TOKEN was unset locally so the `nsc` CLI uses our login auth, not
+  # the SDK token. Re-emit it under its real name for the VM.
+  if [ -n "${SANDBOX_NSC_TOKEN:-}" ]; then
+    printf 'export NSC_TOKEN=%q\n' "$SANDBOX_NSC_TOKEN"
+  fi
   # Forward provider creds the coordinator might need. Coordinator skips
   # providers whose required env vars are missing — no need to gate here.
   for v in \
@@ -102,7 +128,6 @@ trap 'rm -f "$STARTUP_FILE" "$CIDFILE"' EXIT
     E2B_API_KEY \
     HOPX_API_KEY \
     MODAL_TOKEN_ID MODAL_TOKEN_SECRET \
-    NSC_TOKEN \
     RUNLOOP_API_KEY \
     SPRITES_TOKEN \
     TENSORLAKE_API_KEY \
