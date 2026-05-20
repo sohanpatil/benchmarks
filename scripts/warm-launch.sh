@@ -3,24 +3,51 @@
 # Provision a Namespace VM, upload the warm-ops coordinator bundle, hand off.
 # This script lives for ~30s; the actual benchmark (~45 min) runs on the VM.
 #
-# Required env:
-#   TIGRIS_STORAGE_BUCKET
+# If a .env exists at the project root it's auto-sourced, so a fresh local
+# shell can just run `npm run warm:launch`. CI sets env vars directly.
+#
+# Required env (after .env load):
 #   TIGRIS_STORAGE_ACCESS_KEY_ID
 #   TIGRIS_STORAGE_SECRET_ACCESS_KEY
 #   Provider credentials (E2B_API_KEY, etc.) — forwarded if present.
 #
 # Optional env:
-#   RUN_ID                Defaults to "warm-YYYYMMDDTHHMMSSZ-<sha8>"
-#   GITHUB_SHA            Defaults to `git rev-parse HEAD` or "local"
-#   DURATION              Defaults to 2h
-#   MACHINE_TYPE          Defaults to 4x8
-#   TIGRIS_STORAGE_ENDPOINT  Forwarded to the coordinator if set
-#   SAMPLES_PER_OP        Defaults to 100; useful for smoke tests
-#   PROVIDER_FILTER       If set, only run this single provider
+#   TIGRIS_STORAGE_BUCKET   Defaults to "sandbox-benchmarks"
+#   RUN_ID                  Defaults to "warm-YYYYMMDDTHHMMSSZ-<sha8>"
+#   GITHUB_SHA              Defaults to `git rev-parse HEAD` or "local"
+#   DURATION                Defaults to 2h
+#   MACHINE_TYPE            Defaults to 4x8
+#   TIGRIS_STORAGE_ENDPOINT Forwarded to the coordinator if set
+#   SAMPLES_PER_OP          Defaults to 100; useful for smoke tests
+#   PROVIDER_FILTER         If set, only run this single provider
 
 set -euo pipefail
 
-: "${TIGRIS_STORAGE_BUCKET:?TIGRIS_STORAGE_BUCKET required}"
+# Auto-source .env if present in the project root so `npm run warm:launch`
+# is a one-liner from a fresh shell. CI sets env vars directly and skips
+# this. `set -a` exports each `K=V` line; we stay in this shell so the
+# launching `nsc` calls below see the loaded vars.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$PROJECT_ROOT/.env" ]; then
+  echo "[launch] sourcing $PROJECT_ROOT/.env"
+  set -a
+  # Disable errexit just for the source: .env files commonly include lines
+  # bash can't parse cleanly (e.g. `// comment` or values with shell-meta
+  # characters), but the valid K=V assignments still apply. We don't want
+  # one bad line in .env to kill the whole launch.
+  set +e
+  # shellcheck disable=SC1091
+  . "$PROJECT_ROOT/.env"
+  set -e
+  set +a
+fi
+
+# This benchmark always writes to the `sandbox-benchmarks` Tigris bucket.
+# Override with TIGRIS_STORAGE_BUCKET=... if you need a different bucket.
+TIGRIS_STORAGE_BUCKET="${TIGRIS_STORAGE_BUCKET:-sandbox-benchmarks}"
+export TIGRIS_STORAGE_BUCKET
+
 : "${TIGRIS_STORAGE_ACCESS_KEY_ID:?TIGRIS_STORAGE_ACCESS_KEY_ID required}"
 : "${TIGRIS_STORAGE_SECRET_ACCESS_KEY:?TIGRIS_STORAGE_SECRET_ACCESS_KEY required}"
 
@@ -139,8 +166,12 @@ trap 'rm -f "$STARTUP_FILE" "$CIDFILE"' EXIT
   done
   echo 'ulimit -n 200000'
   # nohup + & + redirected stdio is enough to detach. `disown` is a bash
-  # builtin and not available in BusyBox sh on Wolfi.
-  echo 'nohup node /root/coordinator.cjs > /root/run.log 2>&1 </dev/null &'
+  # builtin and not available in BusyBox sh on Wolfi. After the coordinator
+  # exits (success or fail), `sync` flushes the run.log and `poweroff -f`
+  # halts the VM immediately — Namespace then reclaims the instance long
+  # before DURATION expires, so VM wall-clock matches benchmark wall-clock.
+  # `;` (not `&&`) makes us still poweroff on coordinator crash.
+  echo 'nohup sh -c "node /root/coordinator.cjs > /root/run.log 2>&1; sync; poweroff -f" </dev/null >/dev/null 2>&1 &'
   echo 'rm -f -- "$0"   # self-destruct so creds never linger on disk'
 } > "$STARTUP_FILE"
 

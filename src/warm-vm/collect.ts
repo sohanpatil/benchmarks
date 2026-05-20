@@ -35,13 +35,17 @@ function getArg(name: string): string | undefined {
 }
 
 async function main(): Promise<void> {
-  const bucket = required('TIGRIS_STORAGE_BUCKET');
+  // Default to the project's standard warm-ops bucket; allow override.
+  // Matches the launch script's default so a fresh `npm run warm:collect`
+  // works against the latest run without any inline env overrides.
+  const bucket = process.env.TIGRIS_STORAGE_BUCKET || 'sandbox-benchmarks';
   const accessKeyId = required('TIGRIS_STORAGE_ACCESS_KEY_ID');
   const secretAccessKey = required('TIGRIS_STORAGE_SECRET_ACCESS_KEY');
 
   const explicitRunId = getArg('--run-id');
   const timeoutSeconds = parseInt(getArg('--timeout-seconds') ?? '5400', 10);
   const pollIntervalSeconds = parseInt(getArg('--poll-interval-seconds') ?? '30', 10);
+  const noWait = process.argv.includes('--no-wait');
 
   const storage = tigris({ accessKeyId, secretAccessKey });
 
@@ -51,28 +55,36 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   console.log(`[collect] target run_id=${runId}`);
-  console.log(`[collect] polling s3://${bucket}/warm-ops/${runId}/done.json (timeout ${timeoutSeconds}s)`);
 
-  const deadline = Date.now() + timeoutSeconds * 1000;
-  let donePayload: Buffer | null = null;
-  while (Date.now() < deadline) {
-    donePayload = await tryDownload(storage, bucket, `warm-ops/${runId}/done.json`);
-    if (donePayload) break;
-    const remainingSec = Math.max(0, Math.round((deadline - Date.now()) / 1000));
-    console.log(`[collect]   not yet — sleeping ${pollIntervalSeconds}s (${remainingSec}s remaining)`);
-    await sleep(pollIntervalSeconds * 1000);
+  let inProgress = false;
+  if (noWait) {
+    console.log(`[collect] --no-wait: fetching current snapshot without polling done.json`);
+    inProgress = true;
+  } else {
+    console.log(`[collect] polling s3://${bucket}/warm-ops/${runId}/done.json (timeout ${timeoutSeconds}s)`);
+    const deadline = Date.now() + timeoutSeconds * 1000;
+    let donePayload: Buffer | null = null;
+    while (Date.now() < deadline) {
+      donePayload = await tryDownload(storage, bucket, `warm-ops/${runId}/done.json`);
+      if (donePayload) break;
+      const remainingSec = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      console.log(`[collect]   not yet — sleeping ${pollIntervalSeconds}s (${remainingSec}s remaining)`);
+      await sleep(pollIntervalSeconds * 1000);
+    }
+    if (!donePayload) {
+      console.error(`[collect] FATAL: timed out after ${timeoutSeconds}s waiting for done.json`);
+      process.exit(2);
+    }
+    console.log(`[collect] done.json received — fetching results.json + coordinator.log`);
   }
-
-  if (!donePayload) {
-    console.error(`[collect] FATAL: timed out after ${timeoutSeconds}s waiting for done.json`);
-    process.exit(2);
-  }
-
-  console.log(`[collect] done.json received — fetching results.json + coordinator.log`);
 
   const resultsBuf = await tryDownload(storage, bucket, `warm-ops/${runId}/results.json`);
   if (!resultsBuf) {
-    console.error(`[collect] FATAL: done.json present but results.json missing`);
+    console.error(
+      inProgress
+        ? `[collect] FATAL: no results.json yet — has the coordinator written its first heartbeat? Try again in ~60s.`
+        : `[collect] FATAL: done.json present but results.json missing`,
+    );
     process.exit(3);
   }
 
@@ -97,22 +109,23 @@ async function main(): Promise<void> {
     console.warn(`[collect] coordinator.log not available — skipping`);
   }
 
-  console.log(`[collect] OK`);
-  void donePayload;
+  console.log(inProgress ? `[collect] OK (in-progress snapshot)` : `[collect] OK`);
 }
 
 async function findLatestRunId(storage: ReturnType<typeof tigris>, bucket: string): Promise<string | null> {
   const list = await storage.list(bucket, { prefix: 'warm-ops/' });
-  const doneKeys = list.objects
-    .map((o: { key: string }) => o.key)
-    .filter((k: string) => k.endsWith('/done.json'));
-  if (doneKeys.length === 0) return null;
-  // Run IDs sort lexicographically by timestamp prefix, so the latest is
-  // simply the last entry after sorting.
-  doneKeys.sort();
-  const latest = doneKeys[doneKeys.length - 1];
-  const match = latest.match(/^warm-ops\/([^/]+)\/done\.json$/);
-  return match ? match[1] : null;
+  // Match either done.json (finished runs) or results.json (in-progress runs).
+  // The polling loop in main() handles waiting for done.json regardless of
+  // which one we matched here, so callers can `npm run warm:collect`
+  // immediately after `npm run warm:launch` and just wait.
+  const runIds = new Set<string>();
+  for (const obj of list.objects as { key: string }[]) {
+    const match = obj.key.match(/^warm-ops\/([^/]+)\/(?:done|results)\.json$/);
+    if (match) runIds.add(match[1]);
+  }
+  if (runIds.size === 0) return null;
+  // Run IDs are `warm-<UTC-timestamp>-<sha>`, so lexicographic sort = newest last.
+  return [...runIds].sort().pop() ?? null;
 }
 
 async function tryDownload(storage: ReturnType<typeof tigris>, bucket: string, key: string): Promise<Buffer | null> {

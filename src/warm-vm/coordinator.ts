@@ -96,6 +96,11 @@ async function main(): Promise<void> {
   heartbeat = setInterval(tickHeartbeat, HEARTBEAT_INTERVAL_MS);
   heartbeat.unref();
 
+  // Initial heartbeat — writes an empty results.json so `npm run warm:collect`
+  // can discover the run before the first provider finishes (the interval
+  // above doesn't fire until +60s, and the first provider can take longer).
+  await tickHeartbeat();
+
   try {
     for (const providerConfig of toRun) {
       try {

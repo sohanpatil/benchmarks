@@ -174,7 +174,7 @@ export async function runWarmBenchmark(config: WarmConfig): Promise<WarmBenchmar
 }
 
 interface OpContext {
-  payload: Buffer | string;
+  payload: string;
   /** Fixture file laid down once during setup, used by readFile_1mb. */
   readFixturePath: string;
   /** Returns a fresh write target. writeFile_1mb rotates paths to dodge
@@ -221,7 +221,7 @@ function opFnFactory(op: WarmOpName, sandbox: any, ctx: OpContext): OpFn {
         const out = r?.stdout ?? '';
         // Tolerance for trailing newlines / chunking. Just confirm we received
         // most of the expected bytes through the streaming channel.
-        if (out.length < (ctx.payload as any).length * 0.9) {
+        if (out.length < ctx.payload.length * 0.9) {
           throw new Error(`stdout truncated: got ${out.length} bytes`);
         }
       };
@@ -250,14 +250,19 @@ async function runOp(fn: OpFn, samples: number, timeoutMs: number): Promise<Warm
   };
 }
 
-function makePayload(bytes: number): Buffer {
-  // Printable ASCII — adapters that send via JSON / shell commands choke on
-  // raw binary, and stdout transport assumes printable output.
-  const buf = Buffer.alloc(bytes);
-  for (let i = 0; i < bytes; i++) {
-    buf[i] = 65 + (i % 26); // A..Z repeating
-  }
-  return buf;
+function makePayload(bytes: number): string {
+  // ComputeSDK's documented writeFile content type is `string`. Adapters
+  // that accept Buffer (e2b, cloudflare) do it as a courtesy, but blaxel's
+  // API JSON-encodes the content and rejects anything that's not a JSON
+  // string — a Buffer fails the fixture write with HTTP 400. A string of
+  // printable ASCII round-trips through every adapter we test.
+  let s = '';
+  const chunkSize = 65_536;
+  const chunk = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(Math.ceil(chunkSize / 26)).slice(0, chunkSize);
+  const full = Math.floor(bytes / chunkSize);
+  for (let i = 0; i < full; i++) s += chunk;
+  s += chunk.slice(0, bytes - full * chunkSize);
+  return s;
 }
 
 function buildStdoutCommand(bytes: number): string {
