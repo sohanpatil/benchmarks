@@ -25,8 +25,8 @@ and [one-hundred-k-mvp-checklist.md](one-hundred-k-mvp-checklist.md).
 | --- | --- | --- |
 | ~~Full latency histogram (p25, p75, p95, p99, p99.9, max)~~ ✅ Landed | `latency_distribution` object in Tigris `meta.json` carries count, min, p10/p25/p50/p75/p90/p95/p99/p999, max, mean. Postgres `runs` stays p50/p99-only — meta.json is the analytical view. | — |
 | ~~Error-type histogram~~ ✅ Landed | New `timeouts`/`http_errors`/`network_errors` columns on Postgres `runs` (+ matching `error_histogram` object in Tigris `meta.json`). Counted live in the coordinator's `onResult`, no JOIN against `sandbox_results` needed for top-line stats. | — |
-| ~~Ramp-phase latency segments~~ ✅ Landed | `ramp_segments` object in Tigris `meta.json` with `first_25pct` / `middle_50pct` / `last_25pct` buckets, each carrying `idx_range`, `count_ok`, p50/p95/p99/max/mean. Bucketed by `sandbox_idx` since the linear ramp maps idx → start-time. | — |
-| ~~Concurrency at each point in time~~ ✅ Landed | `concurrency_summary` (peak_concurrent, peak_t_ms, mean_concurrent, total_run_ms, sample_interval_ms, ramp_seconds_configured) + `concurrency_timeline` (1Hz samples of `{t_ms, active}`) in Tigris `meta.json`. Computed from per-sandbox `started_at`/`completed_at` via an interval-overlap sweep. | — |
+| ~~Submission-order latency segments~~ ✅ Landed | `submission_segments` object in Tigris `meta.json` with `first_25pct` / `middle_50pct` / `last_25pct` buckets, each carrying `idx_range`, `count_ok`, p50/p95/p99/max/mean. Bucketed by `sandbox_idx` (the order tasks hit the event loop at t=0); reveals whether the provider's queueing favours earlier-submitted requests. | — |
+| ~~Concurrency at each point in time~~ ✅ Landed | `concurrency_summary` (peak_concurrent, peak_t_ms, mean_concurrent, total_run_ms, sample_interval_ms) + `concurrency_timeline` (1Hz samples of `{t_ms, active}`) in Tigris `meta.json`. Computed from per-sandbox `started_at`/`completed_at` via an interval-overlap sweep. | — |
 | ~~Sandbox IDs / region~~ ✅ Landed | `provider_metadata` JSONB column on `sandbox_results` (+ same field in Tigris `raw.jsonl`). Runner reflects every primitive property off the adapter's returned sandbox object, skipping anything that matches a credential-looking regex. On e2b: `{ provider, sandboxId }`. | — |
 
 ---
@@ -38,7 +38,7 @@ and [one-hundred-k-mvp-checklist.md](one-hundred-k-mvp-checklist.md).
 | ~~VM system metrics over time~~ ✅ Landed | Coordinator samples every 5s into `<run_id>/metrics.jsonl` (uploaded at every 30s heartbeat for partial-result durability + at shutdown). Captures: cumulative CPU user/system µs, RSS/heap/external MB, event-loop p50/p99/max lag (since previous sample), load averages, `/proc/self/fd` count, `/proc/net/sockstat` (TCP inuse/tw/alloc etc.). Headline numbers in `meta.json.metrics_summary` (peak RSS, peak event-loop lag, peak open FDs, peak TCP inuse/tw, total CPU). `/proc/*` fields null on non-Linux. | — |
 | **DNS / TLS / TTFB breakdown per sandbox** | Hook into `undici`/`http` via `diagnostics_channel` to capture phase timings | Useful for "is this provider slow because of DNS or their backend?" — but requires bypassing the adapter abstraction |
 | **Cost estimate per run** | Track sandboxes_created × known provider rate × wall time | Pretty important for a benchmark, currently absent |
-| **Concurrent-actually-active timeline** (`active_at(t)`) | Compute from `started_at` / `completed_at` overlaps; sample every 1s and store | Verify the ramp profile matches intent |
+| **Concurrent-actually-active timeline** (`active_at(t)`) | Compute from `started_at` / `completed_at` overlaps; sample every 1s and store | Already covered by `concurrency_timeline` (above); kept here as a placeholder for higher-resolution / longer-retention variants. |
 
 ---
 

@@ -39,7 +39,7 @@ async function main() {
   log.phase('burst-100k coordinator starting');
   log.info(`run_id=${RUN_ID}`);
   log.info(`provider=${PROVIDER} (requires: ${provider.requiredEnvVars.join(', ') || 'none'})`);
-  log.info(`concurrency=${provider.concurrencyTarget} ramp=${provider.rampSeconds}s timeout=${provider.perRequestTimeoutMs ?? 120_000}ms`);
+  log.info(`concurrency=${provider.concurrencyTarget} timeout=${provider.perRequestTimeoutMs ?? 120_000}ms`);
   log.info(`commit_sha=${commit_sha} instance_id=${instance_id}`);
   log.info(`tigris_prefix=${tigris_prefix}`);
   if (override) log.info(`(CONCURRENCY_TARGET overridden via env)`);
@@ -197,7 +197,7 @@ async function main() {
   log.ok(`compute client ready for ${PROVIDER}`);
 
   try {
-    log.phase(`burst — firing ${provider.concurrencyTarget} requests (ramp ${provider.rampSeconds}s)`);
+    log.phase(`burst — firing ${provider.concurrencyTarget} requests at t=0 (no stagger)`);
     await runBurst(provider, compute, {
       async onResult(result) {
         if (result.status === 'ok') {
@@ -280,16 +280,17 @@ async function main() {
       .map(r => r.ms + (r.first_command_ms as number));
     const tti_distribution = distributionOf(tti_values);
 
-    // Ramp-phase segments. Sandbox starts are spread linearly over rampSeconds
-    // by index, so bucketing by idx ranges is equivalent to bucketing by
-    // ramp-position. Answers "does latency degrade as concurrency climbs?"
+    // Submission-order segments: bucket OK results by sandbox_idx (the order
+    // tasks were pushed onto the event loop at t=0). With no ramp, all
+    // submissions happen within milliseconds, so this isolates whether the
+    // provider's queueing favours earlier-submitted requests.
     const totalN = provider.concurrencyTarget;
     const segmentDefs = [
       { name: 'first_25pct',  lo: 0,                        hi: Math.floor(totalN * 0.25) },
       { name: 'middle_50pct', lo: Math.floor(totalN * 0.25), hi: Math.floor(totalN * 0.75) },
       { name: 'last_25pct',   lo: Math.floor(totalN * 0.75), hi: totalN },
     ];
-    const ramp_segments: Record<string, unknown> = {};
+    const submission_segments: Record<string, unknown> = {};
     for (const seg of segmentDefs) {
       const segLatencies = okResults
         .filter(r => r.idx >= seg.lo && r.idx < seg.hi)
@@ -298,7 +299,7 @@ async function main() {
       const segPct = (q: number) =>
         segLatencies.length === 0 ? 0
           : segLatencies[Math.min(segLatencies.length - 1, Math.floor(segLatencies.length * q))];
-      ramp_segments[seg.name] = {
+      submission_segments[seg.name] = {
         idx_range: [seg.lo, seg.hi - 1],
         count_ok: segLatencies.length,
         p50_ms: segPct(0.50),
@@ -312,8 +313,8 @@ async function main() {
     }
 
     // Concurrency-over-time. Build an interval-overlap timeline so we can
-    // tell whether the ramp actually behaved as configured and where the
-    // burst peaked. All intervals are relative to the earliest start.
+    // tell where the burst peaked and how long the provider stayed saturated.
+    // All intervals are relative to the earliest start.
     let concurrency_summary: unknown = null;
     let concurrency_timeline: Array<{ t_ms: number; active: number }> = [];
     if (intervals.length > 0) {
@@ -355,7 +356,6 @@ async function main() {
         peak_t_ms: peakT,
         mean_concurrent: Math.round(meanActive),
         total_run_ms: durationMs,
-        ramp_seconds_configured: provider.rampSeconds,
         sample_interval_ms: SAMPLE_MS,
       };
     }
@@ -392,7 +392,7 @@ async function main() {
       first_command_distribution,
       tti_distribution,
       error_histogram,
-      ramp_segments,
+      submission_segments,
       concurrency_summary,
       concurrency_timeline,
       metrics_summary,

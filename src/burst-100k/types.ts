@@ -3,8 +3,6 @@ import type { ProviderConfig } from '../sandbox/types.js';
 export interface BurstProviderConfig extends ProviderConfig {
   /** Peak target concurrency for this provider's burst (typically 100_000). */
   concurrencyTarget: number;
-  /** Ramp from 0 to concurrencyTarget over this many seconds. */
-  rampSeconds: number;
   /** Per-request timeout in ms. Defaults to 120_000. */
   perRequestTimeoutMs?: number;
 }

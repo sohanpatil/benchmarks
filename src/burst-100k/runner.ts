@@ -11,8 +11,8 @@ export interface RunnerCallbacks {
 
 /**
  * Issue `config.concurrencyTarget` sandbox-creation requests against `compute`,
- * spreading task starts linearly over `config.rampSeconds` (provider-side overload
- * artefacts swamp the signal at true t=0 starts).
+ * firing all of them at t=0 with no stagger. The goal is to surface
+ * provider-side overload behaviour, not hide it behind a ramp.
  *
  * Each task records a per-request latency; on failure, classifies the error.
  * Sandbox.destroy() is fire-and-forget after the latency is recorded, so it
@@ -23,7 +23,7 @@ export async function runBurst(
   compute: any,
   callbacks: RunnerCallbacks,
 ): Promise<void> {
-  const { concurrencyTarget, rampSeconds, sandboxOptions, perRequestTimeoutMs = 120_000 } = config;
+  const { concurrencyTarget, sandboxOptions, perRequestTimeoutMs = 120_000 } = config;
   const limit = pLimit(concurrencyTarget);
 
   let done = 0;
@@ -37,12 +37,7 @@ export async function runBurst(
 
   const tasks: Promise<void>[] = [];
   for (let idx = 0; idx < concurrencyTarget; idx++) {
-    const rampDelayMs = Math.floor((idx / concurrencyTarget) * rampSeconds * 1000);
-
     tasks.push(limit(async () => {
-      const waitMs = rampDelayMs - (Date.now() - startTime);
-      if (waitMs > 0) await sleep(waitMs);
-
       in_flight++;
       const started_at = new Date().toISOString();
       const t0 = performance.now();
@@ -173,10 +168,6 @@ function numericHttpStatus(err: any): number | null {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) : s;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

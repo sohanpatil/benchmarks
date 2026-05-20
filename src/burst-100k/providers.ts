@@ -17,7 +17,6 @@ export const providers: BurstProviderConfig[] = [
     requiredEnvVars: ['E2B_API_KEY'],
     createCompute: () => e2b({ apiKey: process.env.E2B_API_KEY! }),
     concurrencyTarget: 100_000,
-    rampSeconds: 60,
     perRequestTimeoutMs: 120_000,
     // timeoutMs auto-destroys sandbox after this duration; avoids leaking
     // 100k live sandboxes if we don't explicitly destroy each one.
@@ -31,7 +30,6 @@ export const providers: BurstProviderConfig[] = [
       tokenSecret: process.env.MODAL_TOKEN_SECRET!,
     }),
     concurrencyTarget: 100_000,
-    rampSeconds: 60,
     perRequestTimeoutMs: 120_000,
     // Modal adapter doesn't expose a sandbox-level timeoutMs option; the
     // runner's fire-and-forget destroy after recording latency is what
@@ -42,7 +40,6 @@ export const providers: BurstProviderConfig[] = [
     requiredEnvVars: ['RUNLOOP_API_KEY'],
     createCompute: () => runloop({ apiKey: process.env.RUNLOOP_API_KEY! }),
     concurrencyTarget: 100_000,
-    rampSeconds: 60,
     perRequestTimeoutMs: 120_000,
   },
   {
@@ -50,7 +47,6 @@ export const providers: BurstProviderConfig[] = [
     requiredEnvVars: ['TENSORLAKE_API_KEY'],
     createCompute: () => tensorlake({ apiKey: process.env.TENSORLAKE_API_KEY! }),
     concurrencyTarget: 100_000,
-    rampSeconds: 60,
     perRequestTimeoutMs: 120_000,
   },
   {
@@ -58,7 +54,6 @@ export const providers: BurstProviderConfig[] = [
     requiredEnvVars: ['DECLAW_API_KEY'],
     createCompute: () => declaw({ apiKey: process.env.DECLAW_API_KEY! }),
     concurrencyTarget: 100_000,
-    rampSeconds: 60,
     perRequestTimeoutMs: 120_000,
   },
 ];
