@@ -47,6 +47,7 @@ export const providers: BurstProviderConfig[] = [
     createCompute: () => modal({
       tokenId: process.env.MODAL_TOKEN_ID!,
       tokenSecret: process.env.MODAL_TOKEN_SECRET!,
+      scalableSandboxes: true,
     }),
     concurrencyTarget: 100_000,
     perRequestTimeoutMs: 120_000,

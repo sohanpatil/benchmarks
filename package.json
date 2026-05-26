@@ -69,7 +69,7 @@
     "@computesdk/hyperbrowser": "^0.2.0",
     "@computesdk/just-bash": "^0.4.6",
     "@computesdk/kernel": "^0.2.1",
-    "@computesdk/modal": "^1.9.0",
+    "@computesdk/modal": "^1.9.1",
     "@computesdk/namespace": "^1.6.4",
     "@computesdk/notte": "^0.3.0",
     "@computesdk/r2": "^1.1.1",
