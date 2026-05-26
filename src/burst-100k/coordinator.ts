@@ -26,7 +26,11 @@ async function main() {
 
   const commit_sha = process.env.GITHUB_SHA ?? 'local';
   const instance_id = process.env.INSTANCE_ID ?? 'local';
-  const tigris_prefix = `s3://${TIGRIS_STORAGE_BUCKET}/${RUN_ID}/`;
+
+  // Run date used as the first path segment in Tigris. Passed explicitly from
+  // launch.sh so single-VM and sharded runs on the same day share the same
+  // date prefix even if a shard starts just after midnight.
+  const RUN_DATE = process.env.RUN_DATE ?? new Date().toISOString().slice(0, 10);
 
   // Sharded-burst metadata. Set by scripts/burst-100k-launch-sharded.ts when
   // a logical burst is spread across multiple VMs. Unset for single-VM runs.
@@ -42,6 +46,11 @@ async function main() {
     if (!Number.isFinite(shard_index) || !Number.isFinite(shard_count)) return undefined;
     return { group_id, shard_index, shard_count };
   })();
+
+  // New path format: YYYY-MM-DD/<provider>/s<shard_index>/
+  const shard_index = shard?.shard_index ?? 0;
+  const tigris_shard_prefix = `${RUN_DATE}/${PROVIDER}/s${shard_index}/`;
+  const tigris_prefix = `s3://${TIGRIS_STORAGE_BUCKET}/${tigris_shard_prefix}`;
 
   const provider = getProvider(PROVIDER);
 
@@ -90,7 +99,7 @@ async function main() {
       accessKeyId: TIGRIS_STORAGE_ACCESS_KEY_ID,
       secretAccessKey: TIGRIS_STORAGE_SECRET_ACCESS_KEY,
     },
-    RUN_ID,
+    tigris_shard_prefix,
   );
   log.ok('Tigris: sink ready');
 

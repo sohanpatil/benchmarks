@@ -336,9 +336,10 @@ const earliestStart = runsRes.rows.reduce<Date | null>(
 const latestEnd = runsRes.rows.reduce<Date | null>(
   (m, r) => (r.ended_at && (m == null || r.ended_at > m) ? r.ended_at : m), null);
 
-// Tigris key for the group meta.json (used by Postgres `tigris_prefix` too).
+// Tigris key for the aggregated meta.json: YYYY-MM-DD/<provider>/meta.json
 const tigrisBucket = process.env.TIGRIS_STORAGE_BUCKET;
-const tigrisPrefix = tigrisBucket ? `s3://${tigrisBucket}/groups/${groupId}/` : null;
+const runDate = earliestStart ? earliestStart.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+const tigrisPrefix = tigrisBucket ? `s3://${tigrisBucket}/${runDate}/${provider}/` : null;
 
 const aggregate = {
   ...final,
@@ -494,7 +495,7 @@ if (args.writeTigris) {
       region: 'auto',
       credentials: { accessKeyId, secretAccessKey },
     });
-    const key = `groups/${groupId}/meta.json`;
+    const key = `${runDate}/${provider}/meta.json`;
     await s3.send(new PutObjectCommand({
       Bucket: bucket,
       Key: key,

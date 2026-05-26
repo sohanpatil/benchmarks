@@ -17,7 +17,7 @@ export class TigrisSink {
   private rawStream: PassThrough;
   private rawUploadDone: Promise<unknown>;
 
-  constructor(config: TigrisConfig, runId: string) {
+  constructor(config: TigrisConfig, prefix: string) {
     this.client = new S3Client({
       endpoint: config.endpoint,
       region: 'auto',
@@ -27,7 +27,7 @@ export class TigrisSink {
       },
     });
     this.bucket = config.bucket;
-    this.prefix = `${runId}/`;
+    this.prefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
 
     // Multipart streaming upload of raw.jsonl. S3-compatible multipart
     // minimum part size is 5 MiB; lib-storage's Upload buffers internally

@@ -37,8 +37,10 @@ set -euo pipefail
 
 GITHUB_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo local)}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_SHA:0:8}-${PROVIDER}}"
+RUN_DATE="${RUN_DATE:-$(date -u +%Y-%m-%d)}"
 DURATION="${DURATION:-12h}"
 MACHINE_TYPE="${MACHINE_TYPE:-16x32}"
+SHARD_INDEX_FOR_PATH="${SHARD_INDEX:-0}"
 
 echo "[launch] RUN_ID=$RUN_ID PROVIDER=$PROVIDER duration=$DURATION machine=$MACHINE_TYPE"
 if [ -n "${CONCURRENCY_TARGET:-}" ]; then
@@ -89,7 +91,7 @@ psql "$PG_URL" -v ON_ERROR_STOP=1 -q -c "
   INSERT INTO runs (id, provider, commit_sha, instance_id, started_at, status, tigris_prefix,
                     group_id, shard_index, shard_count)
   VALUES ('$RUN_ID', '$PROVIDER', '$GITHUB_SHA', '$INSTANCE_ID', now(), 'running',
-          's3://${TIGRIS_STORAGE_BUCKET}/${RUN_ID}/',
+          's3://${TIGRIS_STORAGE_BUCKET}/${RUN_DATE}/${PROVIDER}/s${SHARD_INDEX_FOR_PATH}/',
           $GROUP_ID_LIT, $SHARD_IDX_LIT, $SHARD_CNT_LIT)
   ON CONFLICT (id) DO NOTHING;
 "
@@ -113,6 +115,7 @@ trap 'rm -f "$STARTUP_FILE" "$CIDFILE"' EXIT
   echo '#!/bin/sh'
   echo 'set -e'
   printf 'export RUN_ID=%q\n'               "$RUN_ID"
+  printf 'export RUN_DATE=%q\n'             "$RUN_DATE"
   printf 'export PROVIDER=%q\n'             "$PROVIDER"
   printf 'export INSTANCE_ID=%q\n'          "$INSTANCE_ID"
   printf 'export GITHUB_SHA=%q\n'           "$GITHUB_SHA"
