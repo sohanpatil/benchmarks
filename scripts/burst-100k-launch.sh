@@ -127,7 +127,7 @@ trap 'rm -f "$STARTUP_FILE" "$CIDFILE"' EXIT
   echo 'export COORDINATOR_LOG_PATH=/root/run.log'
   # Provider-specific credentials — forward whatever's in the env. Coordinator's
   # `requiredEnvVars` check fails fast if its provider's vars are missing.
-  for v in E2B_API_KEY MODAL_TOKEN_ID MODAL_TOKEN_SECRET DAYTONA_API_KEY CSB_API_KEY RUNLOOP_API_KEY TENSORLAKE_API_KEY DECLAW_API_KEY; do
+  for v in E2B_API_KEY MODAL_TOKEN_ID MODAL_TOKEN_SECRET DAYTONA_API_KEY CSB_API_KEY RUNLOOP_API_KEY TENSORLAKE_API_KEY DECLAW_API_KEY VERCEL_TOKEN VERCEL_TEAM_ID VERCEL_PROJECT_ID; do
     eval "val=\${$v:-}"
     [ -n "$val" ] && printf 'export %s=%q\n' "$v" "$val"
   done

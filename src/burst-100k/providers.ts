@@ -4,6 +4,7 @@ import { e2b } from '@computesdk/e2b';
 import { modal } from '@computesdk/modal';
 import { runloop } from '@computesdk/runloop';
 import { tensorlake } from '@computesdk/tensorlake';
+import { vercel } from '@computesdk/vercel';
 import type { BurstProviderConfig } from './types.js';
 
 /**
@@ -72,6 +73,18 @@ export const providers: BurstProviderConfig[] = [
     name: 'declaw',
     requiredEnvVars: ['DECLAW_API_KEY'],
     createCompute: () => declaw({ apiKey: process.env.DECLAW_API_KEY! }),
+    concurrencyTarget: 100_000,
+    perRequestTimeoutMs: 120_000,
+    sandboxOptions: { timeout: KEEP_ALIVE_MS },
+  },
+  {
+    name: 'vercel',
+    requiredEnvVars: ['VERCEL_TOKEN', 'VERCEL_TEAM_ID', 'VERCEL_PROJECT_ID'],
+    createCompute: () => vercel({
+      token: process.env.VERCEL_TOKEN!,
+      teamId: process.env.VERCEL_TEAM_ID!,
+      projectId: process.env.VERCEL_PROJECT_ID!,
+    }),
     concurrencyTarget: 100_000,
     perRequestTimeoutMs: 120_000,
     sandboxOptions: { timeout: KEEP_ALIVE_MS },
