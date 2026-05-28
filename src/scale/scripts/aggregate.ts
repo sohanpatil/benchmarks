@@ -10,10 +10,10 @@
  * meaningfully across VMs.
  *
  * Usage:
- *   tsx src/burst-100k/scripts/aggregate.ts --group <GROUP_ID>
- *   tsx src/burst-100k/scripts/aggregate.ts --recent
- *   tsx src/burst-100k/scripts/aggregate.ts --group <GROUP_ID> --out meta.json
- *   npm run bench:burst-100k:aggregate -- --group <GROUP_ID>
+ *   tsx src/scale/scripts/aggregate.ts --group <GROUP_ID>
+ *   tsx src/scale/scripts/aggregate.ts --recent
+ *   tsx src/scale/scripts/aggregate.ts --group <GROUP_ID> --out meta.json
+ *   npm run bench:scale:aggregate -- --group <GROUP_ID>
  *
  * Exit code:
  *   0 — group found and aggregated (status is reported in the output)
@@ -40,7 +40,7 @@ interface Args {
 
 function usage(): string {
   return [
-    'Usage: tsx src/burst-100k/scripts/aggregate.ts [options]',
+    'Usage: tsx src/scale/scripts/aggregate.ts [options]',
     '',
     'One of:',
     '  --group <id>           Aggregate the named group',

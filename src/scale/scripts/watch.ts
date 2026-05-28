@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Watch one or more burst-100k runs until they reach a terminal state.
+ * Watch one or more scale runs until they reach a terminal state.
  *
  * Polls Postgres for the given RUN_IDs (or the latest N runs via --recent)
  * at a fixed interval, prints a status table, and exits when every watched
@@ -9,10 +9,10 @@
  * Loads .env via dotenv so PG_URL works the same way as the runtime sees it.
  *
  * Usage:
- *   tsx src/burst-100k/scripts/watch.ts <RUN_ID> [<RUN_ID> ...]
- *   tsx src/burst-100k/scripts/watch.ts --recent 5
- *   tsx src/burst-100k/scripts/watch.ts --recent 5 --interval 10
- *   npm run bench:burst-100k:watch -- --recent 5
+ *   tsx src/scale/scripts/watch.ts <RUN_ID> [<RUN_ID> ...]
+ *   tsx src/scale/scripts/watch.ts --recent 5
+ *   tsx src/scale/scripts/watch.ts --recent 5 --interval 10
+ *   npm run bench:scale:watch -- --recent 5
  */
 
 import 'dotenv/config';
@@ -28,7 +28,7 @@ interface Args {
 
 function usage(): string {
   return [
-    'Usage: tsx src/burst-100k/scripts/watch.ts [options] [<RUN_ID> ...]',
+    'Usage: tsx src/scale/scripts/watch.ts [options] [<RUN_ID> ...]',
     '',
     'Options:',
     '  --recent <n>, -n <n>   Watch the latest <n> runs from Postgres',

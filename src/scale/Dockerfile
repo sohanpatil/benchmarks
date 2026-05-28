@@ -5,7 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY src ./src
-RUN npm run --silent bundle:burst-100k
+RUN npm run --silent bundle:scale
 
 FROM node:20-alpine
 
@@ -13,6 +13,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY --from=builder /app/dist/burst-100k.cjs /app/coordinator.cjs
+COPY --from=builder /app/dist/scale.cjs /app/coordinator.cjs
 
 CMD ["node", "/app/coordinator.cjs"]

@@ -2,7 +2,7 @@
  * Structured stdout logger — GitHub Actions-style phase markers, timestamped
  * level-tagged lines, no colors (so the file uploaded to Tigris stays clean).
  *
- *   2026-05-14T18:54:25.123Z [info ]  ━━━ burst-100k coordinator starting ━━━
+ *   2026-05-14T18:54:25.123Z [info ]  ━━━ scale coordinator starting ━━━
  *   2026-05-14T18:54:25.456Z [info ]  run_id=… provider=e2b
  *   2026-05-14T18:54:26.001Z [ok   ]  sandbox 0 created in 134ms — sandboxId=…
  *   2026-05-14T18:54:31.500Z [stat ]  progress 10/100 (in_flight=0 errors=0) eta ≈54s

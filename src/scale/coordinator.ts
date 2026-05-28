@@ -28,7 +28,7 @@ async function main() {
   const instance_id = process.env.INSTANCE_ID ?? 'local';
   const tigris_prefix = `s3://${TIGRIS_STORAGE_BUCKET}/${RUN_ID}/`;
 
-  // Sharded-burst metadata. Set by src/burst-100k/scripts/start.ts when a
+  // Sharded-burst metadata. Set by src/scale/scripts/start.ts when a
   // logical burst is spread across multiple VMs. Unset for single-VM runs.
   const shard = (() => {
     const group_id = process.env.GROUP_ID;
@@ -51,7 +51,7 @@ async function main() {
     provider.concurrencyTarget = parseInt(override, 10);
   }
 
-  log.phase('burst-100k coordinator starting');
+  log.phase('scale coordinator starting');
   log.info(`run_id=${RUN_ID}`);
   log.info(`provider=${PROVIDER} (requires: ${provider.requiredEnvVars.join(', ') || 'none'})`);
   log.info(`concurrency=${provider.concurrencyTarget} timeout=${provider.perRequestTimeoutMs ?? 120_000}ms`);
@@ -113,7 +113,7 @@ async function main() {
 
   // Periodically upload the coordinator's own stdout/stderr (tee'd to a file by
   // the uploaded /root/start.sh) to Tigris. Skipped silently when the env var
-  // is unset (e.g. local `npm run bench:burst-100k:local` runs).
+  // is unset (e.g. local `npm run bench:scale:local` runs).
   const COORDINATOR_LOG_PATH = process.env.COORDINATOR_LOG_PATH;
   const uploadLog = async (): Promise<void> => {
     if (!COORDINATOR_LOG_PATH) return;

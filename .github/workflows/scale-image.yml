@@ -1,0 +1,57 @@
+name: Scale Image
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/scale/**'
+  pull_request:
+    paths:
+      - 'src/scale/**'
+  workflow_dispatch:
+
+concurrency:
+  group: scale-image
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build and push scale image
+    runs-on: namespace-profile-default
+    env:
+      IMAGE_REPO: nscr.io/5enq753trme1k/scale
+      IMAGE_SHA_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Namespace registry
+        env:
+          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+        run: nsc docker login
+
+      - name: Build and push commit image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            -f src/scale/Dockerfile \
+            --push \
+            -t "$IMAGE_REPO:$IMAGE_SHA_TAG" \
+            .
+
+      - name: Build and push latest image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --sbom=false \
+            -f src/scale/Dockerfile \
+            --push \
+            -t "$IMAGE_REPO:latest" \
+            .

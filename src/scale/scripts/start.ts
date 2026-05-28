@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Launcher for the burst-100k benchmark.
+ * Launcher for the scale benchmark.
  *
  * Spreads a single logical burst of N sandboxes across K Namespace VM-backed
  * containers by launching K `nsc run --image ...` jobs in parallel — each with
@@ -10,13 +10,13 @@
  * Each VM ends up as its own `runs` row in Postgres; combine shards after the
  * fact with:
  *
- *   tsx src/burst-100k/scripts/aggregate.ts --group <GROUP_ID>
+ *   tsx src/scale/scripts/aggregate.ts --group <GROUP_ID>
  *
  * Usage:
- *   tsx src/burst-100k/scripts/start.ts --provider e2b --total 100000 --vms 20
- *   tsx src/burst-100k/scripts/start.ts -p e2b -t 100000 -v 20 --duration 2h
- *   tsx src/burst-100k/scripts/start.ts -p e2b -t 1000 -v 1   # single VM
- *   npm run bench:burst-100k:start -- --provider e2b --total 100000 --vms 20
+ *   tsx src/scale/scripts/start.ts --provider e2b --total 100000 --vms 20
+ *   tsx src/scale/scripts/start.ts -p e2b -t 100000 -v 20 --duration 2h
+ *   tsx src/scale/scripts/start.ts -p e2b -t 1000 -v 1   # single VM
+ *   npm run bench:scale:start -- --provider e2b --total 100000 --vms 20
  *
  * Required env:
  *   PG_URL                            Neon connection string
@@ -30,7 +30,7 @@
  */
 
 import 'dotenv/config';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { execSync } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,7 @@ import pg from 'pg';
 const { Client } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// __dirname is <repo>/src/burst-100k/scripts; the project root (cwd for npm,
+// __dirname is <repo>/src/scale/scripts; the project root (cwd for npm,
 // psql, and the dist/ + db/ paths below) is three levels up.
 const repoRoot = path.resolve(__dirname, '../../..');
 
@@ -53,6 +53,7 @@ const PROVIDER_SECRET_VARS = [
 ];
 
 const MACHINE_TYPE_DEFAULT = '16x32';
+const DEFAULT_SCALE_IMAGE = 'nscr.io/5enq753trme1k/scale:latest';
 
 // ----- helpers --------------------------------------------------------------
 
@@ -115,7 +116,7 @@ function utcStamp(): string {
 
 interface Args {
   provider: string;
-  image: string;
+  image?: string;
   total: number;
   vms: number;
   duration: string;
@@ -125,7 +126,7 @@ interface Args {
 
 function usage(): string {
   return [
-    'Usage: tsx src/burst-100k/scripts/start.ts [options]',
+    'Usage: tsx src/scale/scripts/start.ts [options]',
     '',
     'Required:',
     '  --provider <name>, -p  Provider name (e2b, modal, runloop, ...)',
@@ -141,8 +142,9 @@ function usage(): string {
     '  --help, -h             Print this help',
     '',
     'Examples:',
-    '  npm run bench:burst-100k:start -- --provider e2b --image <ref> --total 100000 --vms 20',
-    '  tsx src/burst-100k/scripts/start.ts -p e2b -t 1000 -v 1 --duration 30m',
+    `                         (default: ${DEFAULT_SCALE_IMAGE})`,
+    '  npm run bench:scale:start -- --provider e2b --total 100000 --vms 20',
+    '  tsx src/scale/scripts/start.ts -p e2b -t 1000 -v 1 --duration 30m',
   ].join('\n');
 }
 
@@ -167,7 +169,6 @@ function parseArgs(): Args {
     else { console.error(`unknown arg: ${a}\n${usage()}`); process.exit(2); }
   }
   if (!out.provider) { console.error(`--provider is required\n${usage()}`); process.exit(2); }
-  if (!out.image) { console.error(`--image is required\n${usage()}`); process.exit(2); }
   if (!Number.isFinite(out.total) || (out.total as number) <= 0) {
     console.error(`--total must be a positive integer\n${usage()}`); process.exit(2);
   }
@@ -199,7 +200,6 @@ interface ShardOpts {
 
 interface ShardResult { shard: number; runId: string; rc: number; }
 
-/**
 /**
  * Start one shard as a native Namespace container (`nsc run --image ...`) and
  * record the corresponding `runs` row in Postgres. Never throws — resolves
@@ -344,10 +344,11 @@ async function main(): Promise<void> {
 
   const rule = '═'.repeat(67);
   console.log(rule);
-  console.log(' burst-100k :: launch');
+  console.log(' scale :: launch');
   console.log(rule);
   console.log(`  provider:   ${args.provider}`);
-  console.log(`  image:      ${args.image}`);
+  const image = args.image ?? DEFAULT_SCALE_IMAGE;
+  console.log(`  image:      ${image}`);
   console.log(`  total:      ${args.total.toLocaleString()} sandboxes`);
   console.log(`  vms:        ${args.vms}`);
   console.log(`  per-vm:     ${perVm.toLocaleString()} sandboxes`);
@@ -364,7 +365,7 @@ async function main(): Promise<void> {
   // Apply the Postgres schema ONCE up front. `CREATE TABLE/INDEX IF NOT EXISTS`
   // is not race-safe under N parallel applies, so the orchestrator owns it.
   console.log('[launch] ensuring Postgres schema');
-  const schema = spawnSync('psql', [process.env.PG_URL, '-v', 'ON_ERROR_STOP=1', '-q', '-f', 'db/burst-100k.sql'], { stdio: 'inherit', cwd: repoRoot });
+  const schema = spawnSync('psql', [process.env.PG_URL, '-v', 'ON_ERROR_STOP=1', '-q', '-f', 'db/scale.sql'], { stdio: 'inherit', cwd: repoRoot });
   if (schema.status !== 0) { console.error(`[launch] schema apply failed (rc=${schema.status}); aborting before any VMs are spawned`); process.exit(schema.status ?? 1); }
   console.log('');
 
@@ -376,7 +377,7 @@ async function main(): Promise<void> {
       const log: Logger = (line) => console.log(`${tag}${line}`);
       const opts: ShardOpts = {
         provider: args.provider,
-        image: args.image,
+        image,
         runId: runIds[i],
         concurrencyTarget: perVm,
         duration: args.duration,
@@ -402,8 +403,8 @@ async function main(): Promise<void> {
     if (r.rc !== 0) failed++;
   }
   console.log('');
-  console.log(`  Watch:     npm run bench:burst-100k:watch -- ${results.map(r => r.runId).join(' ')}`);
-  console.log(`  Aggregate: npm run bench:burst-100k:aggregate -- --group ${groupId}`);
+  console.log(`  Watch:     npm run bench:scale:watch -- ${results.map(r => r.runId).join(' ')}`);
+  console.log(`  Aggregate: npm run bench:scale:aggregate -- --group ${groupId}`);
 
   if (failed > 0) {
     console.log(`\n${failed}/${results.length} launches failed`);
