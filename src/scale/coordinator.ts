@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { createBench } from '@computesdk/bench';
+import type { BenchContext } from '@computesdk/bench';
 import { getProvider } from './providers.js';
 import { log } from './logger.js';
 import { PostgresSink } from './sinks/postgres.js';
@@ -13,8 +14,6 @@ import type { ProgressStats, MetricsSample } from './types.js';
 // dotenv only matters for local invocation. In production the env is set by
 // scripts/start.ts via the uploaded /root/start.sh (`export VAR=...`).
 loadDotenv();
-
-const HEARTBEAT_INTERVAL_MS = 30_000;
 
 async function main() {
   const RUN_ID = required('RUN_ID');
@@ -120,6 +119,7 @@ async function main() {
   const COORDINATOR_LOG_PATH = process.env.COORDINATOR_LOG_PATH;
   const bench = createBench({
     label: `scale.${PROVIDER}`,
+    provider: PROVIDER,
     apiUrl: benchApiUrl,
     apiKey: benchApiKey,
     batch: shard?.group_id,
@@ -129,16 +129,7 @@ async function main() {
     captureOutput: COORDINATOR_LOG_PATH
       ? { file: COORDINATOR_LOG_PATH }
       : undefined,
-  } as any);
-  const uploadLog = async (): Promise<void> => {
-    if (!COORDINATOR_LOG_PATH) return;
-    try {
-      const content = await fs.promises.readFile(COORDINATOR_LOG_PATH, 'utf-8');
-      await tigris.writeLog(content);
-    } catch (err: any) {
-      log.warn(`log-upload failed: ${err?.message ?? err}`);
-    }
-  };
+  });
 
   // System-metrics sampling. Event-loop delay needs an enabled histogram;
   // /proc/self/fd and /proc/net/sockstat are Linux-only (silent null elsewhere).
@@ -171,7 +162,7 @@ async function main() {
   const countOpenFds = (): number | null => {
     try { return fs.readdirSync('/proc/self/fd').length; } catch { return null; }
   };
-  const sampleMetrics = (): void => {
+  const sampleMetrics = (): MetricsSample => {
     const cpu = process.cpuUsage(cpuBaseline);
     const mem = process.memoryUsage();
     const load = os.loadavg();
@@ -195,33 +186,23 @@ async function main() {
     };
     eloopHist.reset();
     metricsSamples.push(sample);
+    return sample;
   };
-  const metricsInterval = setInterval(sampleMetrics, METRICS_SAMPLE_MS);
-
-  const heartbeat = setInterval(() => {
-    const ts = new Date().toISOString();
-    pg.heartbeat(lastStats).catch(err => log.warn(`heartbeat:pg ${err.message}`));
-    tigris.writeHeartbeat({ ...lastStats, ts }).catch(err => log.warn(`heartbeat:tigris ${err.message}`));
-    uploadLog();
-    if (metricsSamples.length > 0) {
-      tigris.writeMetrics(metricsSamples).catch(err => log.warn(`heartbeat:metrics ${err.message}`));
-    }
-    log.stat(`heartbeat done=${lastStats.done}/${provider.concurrencyTarget} in_flight=${lastStats.in_flight} errors=${lastStats.errors}`);
-  }, HEARTBEAT_INTERVAL_MS);
+  const metricsInterval = setInterval(() => {
+    bench.emit('system.metrics', sampleMetrics());
+  }, METRICS_SAMPLE_MS);
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     log.phase(`${signal} received — flushing`);
-    clearInterval(heartbeat);
     clearInterval(metricsInterval);
     try {
       await pg.flush();
       await tigris.close();
       await pg.fail(`Process received ${signal} at done=${lastStats.done}/${provider.concurrencyTarget}`);
       await pg.close();
-      await uploadLog();
       if (metricsSamples.length > 0) await tigris.writeMetrics(metricsSamples);
       log.ok('flushed all sinks');
     } catch (e: any) {
@@ -240,7 +221,7 @@ async function main() {
   }
 
   try {
-    const runBurstWithSinks = async () => {
+    const burstTask = async (ctx: BenchContext) => {
       log.phase(`burst — firing ${provider.concurrencyTarget} requests at t=0 (no stagger)`);
       await runBurst(provider, compute, {
         async onResult(result) {
@@ -258,28 +239,45 @@ async function main() {
             start: Date.parse(result.started_at),
             end: Date.parse(result.completed_at),
           });
+          ctx.emitMetric('sandbox.result', {
+            status: result.status,
+            latency_ms: result.latency_ms,
+            first_command_ms: result.first_command_ms,
+            failure_class: result.failure_class,
+            sandbox_idx: result.sandbox_idx,
+            http_status: result.http_status,
+            error_code: result.error_code,
+          });
           tigris.writeResult(result);
           await pg.write(result);
         },
         onProgress(stats) {
           lastStats = stats;
+          bench.progress({
+            done: stats.done,
+            inFlight: stats.in_flight,
+            errors: stats.errors,
+            total: provider.concurrencyTarget,
+          });
         },
       });
     };
 
-    const benchAny = bench as any;
-    if (typeof benchAny.add === 'function' && typeof benchAny.run === 'function') {
-      benchAny.add(`scale.${PROVIDER}.burst`, runBurstWithSinks);
-      await benchAny.run({ iterations: 1, warmup: 0, provider: PROVIDER });
-    } else {
-      await benchAny.run(`scale.${PROVIDER}.burst`, runBurstWithSinks, {
-        iterations: 1,
-        warmup: 0,
-        provider: PROVIDER,
-      });
+    bench.add(`scale.${PROVIDER}.burst`, burstTask);
+    try {
+      await bench.run({ iterations: 1, warmup: 0 });
+    } catch (benchErr: any) {
+      // The bench SDK already swallows telemetry/network errors internally.
+      // Any error that escapes here is either from the burst itself or an
+      // unexpected bench internal fault. If the burst completed (all sandboxes
+      // processed) we treat it as non-fatal and continue with result
+      // aggregation; otherwise we re-throw so the outer catch can handle
+      // the genuine burst failure.
+      if (lastStats.done < provider.concurrencyTarget) {
+        throw benchErr;
+      }
+      log.warn(`bench.run failed after burst completed; treating as non-fatal: ${benchErr?.message ?? benchErr}`);
     }
-
-    clearInterval(heartbeat);
 
     const latencies = okResults.map(r => r.ms).sort((a, b) => a - b);
     const pct = (q: number) =>
@@ -481,10 +479,8 @@ async function main() {
     if (final.timeouts + final.http_errors + final.network_errors > 0) {
       log.warn(`create-failure class: timeouts=${final.timeouts} http_errors=${final.http_errors} network_errors=${final.network_errors}`);
     }
-    // Final log upload AFTER the completion message so it ends up in Tigris.
-    await uploadLog();
+    log.phase('flushing complete');
   } catch (err: any) {
-    clearInterval(heartbeat);
     clearInterval(metricsInterval);
     log.error(`run failed: ${err?.message ?? err}`);
     try {
@@ -492,7 +488,6 @@ async function main() {
       await tigris.close();
       await pg.fail(err?.message ?? String(err));
       await pg.close();
-      await uploadLog();
       if (metricsSamples.length > 0) await tigris.writeMetrics(metricsSamples);
     } catch (e: any) {
       log.error(`failed to record failure: ${e?.message ?? e}`);
