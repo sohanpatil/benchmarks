@@ -4,8 +4,13 @@
  * the bench API query client and emit the same metrics shape an unsharded
  * burst would emit in its meta.json.
  *
- * Does not touch Postgres. Relies on the bench API backend having computed
- * and stored the per-batch aggregates from ingested span / progress events.
+ * Does not touch Postgres. Sandbox-level counts are rolled up from the per-run
+ * progress counters the coordinator emits (the same source watch.ts uses) — NOT
+ * from getBatchStats, whose totalSpans/statusCounts count lifecycle-step spans
+ * (create/exec/destroy) rather than sandboxes, and whose latencyDistribution is
+ * step-span durations rather than per-sandbox allocate latency. The progress API
+ * exposes only scalar counters, so per-sandbox latency and a failure-by-code
+ * breakdown are not derivable here — those live in each shard's Tigris meta.json.
  *
  * Usage:
  *   tsx src/scale/scripts/aggregate.ts --group <GROUP_ID>
@@ -94,18 +99,25 @@ if (!groupId) {
   console.log(`[aggregate] --recent → batchId=${groupId}`);
 }
 
-// Fetch batch stats, progress, and runs in parallel
-const [stats, progress, runsRes] = await Promise.all([
-  query.getBatchStats(groupId),
+// Fetch progress and runs in parallel. getBatchStats is deliberately not used
+// (see header): its spans are lifecycle steps, not sandboxes.
+const [progress, runsRes] = await Promise.all([
   query.getBatchProgress(groupId),
   query.listRuns({ batch: groupId, limit: 500 }),
 ]);
 
-// BenchBatchProgress carries only per-run counters (no roll-up), so derive the
-// shard-level breakdown. A run is terminal once done >= total — the same
-// inference watch.ts uses, since run summaries don't expose lifecycle state.
+// BenchBatchProgress carries only per-run counters (no roll-up), so derive both
+// the shard-level breakdown and the sandbox-level totals here. A run is terminal
+// once done >= total — the same inference watch.ts uses, since run summaries
+// don't expose lifecycle state. Each shard's `total` is its concurrencyTarget,
+// `done` is sandboxes finalized, and `errors` increments once per non-success
+// sandbox (failed + readiness_failed + partial), so done − errors == successes.
 let shardsRunning = 0, shardsCompleted = 0, shardsFailed = 0;
+let sandboxesAttempted = 0, sandboxesDone = 0, sandboxErrors = 0;
 for (const r of progress.runs) {
+  sandboxesAttempted += r.total;
+  sandboxesDone += r.done;
+  sandboxErrors += r.errors;
   const terminal = r.total > 0 && r.done >= r.total;
   if (!terminal) shardsRunning++;
   else if (r.errors > 0) shardsFailed++;
@@ -125,57 +137,40 @@ if (shardsRunning > 0 && args.requireTerminal) {
   process.exit(1);
 }
 
-// The batch-stats endpoint only distinguishes ok vs error spans. The finer
-// 'partial' / 'readiness_failed' split the unsharded coordinator records is not
-// recoverable here, so those buckets are reported as 0 and `failures` carries
-// the full non-success count.
-const succeeded = stats.statusCounts.ok;
-const failed = stats.statusCounts.error;
-const latency = stats.latencyDistribution;
-
-// failureBreakdown is Array<{errorCode, count}>. Keep the raw per-code map and
-// classify into the legacy timeout/http_error/network_error buckets by errorCode;
-// codes matching none are summed into `other`.
-const failuresByCode: Record<string, number> = {};
-let timeouts = 0, httpErrors = 0, networkErrors = 0, otherErrors = 0;
-for (const { errorCode, count } of stats.failureBreakdown) {
-  failuresByCode[errorCode] = (failuresByCode[errorCode] ?? 0) + count;
-  const c = errorCode.toLowerCase();
-  if (c.includes('timeout') || c === 'etimedout') timeouts += count;
-  else if (c.includes('http') || /^\d{3}$/.test(errorCode)) httpErrors += count;
-  else if (c.includes('network') || c.includes('econn') || c.includes('socket') || c.includes('dns')) networkErrors += count;
-  else otherErrors += count;
-}
+// Sandbox-level counts come from the rolled-up progress counters above. The
+// progress API exposes only scalar done/total/errors, so the finer
+// 'partial' / 'readiness_failed' / failure-by-code splits the coordinator
+// records per shard are not recoverable here — `failures` carries the full
+// non-success count, and the sub-buckets plus per-sandbox latency are left null.
+const succeeded = sandboxesDone - sandboxErrors;
+const failed = sandboxErrors;
 
 const provider = [...new Set(runsRes.items.map((r: BenchRunSummary) => r.provider).filter(Boolean))].join(',') || 'unknown';
 
 const final = {
-  sandboxes_attempted: stats.totalSpans,
+  sandboxes_attempted: sandboxesAttempted,
   sandboxes_succeeded: succeeded,
-  partials: 0,            // not exposed by the batch-stats endpoint
-  readiness_failures: 0,  // not exposed by the batch-stats endpoint
+  partials: null,            // not separable from the progress error counter
+  readiness_failures: null,  // not separable from the progress error counter
   failures: failed,
-  timeouts,
-  http_errors: httpErrors,
-  network_errors: networkErrors,
-  p50_latency_ms: latency.p50,
-  p99_latency_ms: latency.p99,
+  timeouts: null,            // failure-by-code not exposed by the progress API
+  http_errors: null,         // "
+  network_errors: null,      // "
+  p50_latency_ms: null,      // per-sandbox latency not exposed by the progress API
+  p99_latency_ms: null,      // "
 };
 
 const aggregate = {
   ...final,
-  latency_distribution: latency,
+  // per-sandbox latency lives in each shard's Tigris meta.json — not derivable
+  // from the progress counters this script reads.
+  latency_distribution: null,
   status_histogram: {
-    ok: succeeded,
-    error: failed,
+    success: succeeded,
+    failed,
   },
-  create_failure_class: {
-    timeout: timeouts,
-    http_error: httpErrors,
-    network_error: networkErrors,
-    other: otherErrors,
-  },
-  failure_breakdown_by_code: failuresByCode,
+  create_failure_class: null,      // not exposed by the progress API
+  failure_breakdown_by_code: null, // "
   // TODO: backend currently does not expose first_command_distribution,
   // tti_distribution, submission_segments, or concurrency timeline.
   // Once the API adds them, map them in here.
@@ -213,14 +208,12 @@ console.log(`  shards:           ${shardsTerminal}/${progress.runs.length} ` +
 console.log(`  attempted:        ${final.sandboxes_attempted.toLocaleString()}`);
 console.log(`  succeeded:        ${final.sandboxes_succeeded.toLocaleString()} ` +
   `(${((final.sandboxes_succeeded / Math.max(1, final.sandboxes_attempted)) * 100).toFixed(2)}%)`);
-console.log(`  failed:           ${final.failures.toLocaleString()} ` +
-  `(timeouts=${final.timeouts} http=${final.http_errors} network=${final.network_errors}` +
-  (otherErrors > 0 ? ` other=${otherErrors}` : '') + `)`);
+console.log(`  failed:           ${final.failures.toLocaleString()}`);
 console.log('');
-console.log(`  allocate-phase latency (status='ok' only):`);
-console.log(`    p50:  ${latency.p50}ms`);
-console.log(`    p99:  ${latency.p99}ms`);
-console.log(`    min/avg/max: ${latency.min}/${latency.avg}/${latency.max}ms`);
+console.log(`  note: counts are rolled up from per-shard progress counters.`);
+console.log(`        per-sandbox latency and the failure-by-code breakdown are`);
+console.log(`        not exposed by the bench progress API — see each shard's`);
+console.log(`        Tigris <run_id>/meta.json for those.`);
 
 // ─── local file ──────────────────────────────────────────────────────────
 if (args.out) {
