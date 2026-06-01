@@ -59,7 +59,7 @@ jobs:
           - hopx
           - modal
           - namespace
-          # - northflank
+          - northflank
           - runloop
           - tensorlake
           - upstash
@@ -99,8 +99,8 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
-          # NORTHFLANK_TOKEN: ${{ secrets.NORTHFLANK_TOKEN }}
-          # NORTHFLANK_PROJECT_ID: ${{ secrets.NORTHFLANK_PROJECT_ID }}
+          NORTHFLANK_TOKEN: ${{ secrets.NORTHFLANK_TOKEN }}
+          NORTHFLANK_PROJECT_ID: ${{ secrets.NORTHFLANK_PROJECT_ID }}
           RUNLOOP_API_KEY: ${{ secrets.RUNLOOP_API_KEY }}
           TENSORLAKE_API_KEY: ${{ secrets.TENSORLAKE_API_KEY }}
           UPSTASH_BOX_API_KEY: ${{ secrets.UPSTASH_BOX_API_KEY }}

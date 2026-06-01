@@ -8,7 +8,7 @@ import { e2b } from '@computesdk/e2b';
 import { hopx } from '@computesdk/hopx';
 import { modal } from '@computesdk/modal';
 import { namespace } from '@computesdk/namespace';
-// import { northflank } from '@computesdk/northflank';
+import { northflank } from '@computesdk/northflank';
 import { runloop } from '@computesdk/runloop';
 import { sprites } from '@computesdk/sprites';
 import { tensorlake } from '@computesdk/tensorlake'
@@ -79,15 +79,15 @@ export const providers: ProviderConfig[] = [
     createCompute: () => namespace({ token: process.env.NSC_TOKEN! }),
     sandboxOptions: { image: 'node:22' },
   },
-  // {
-  //   name: 'northflank',
-  //   requiredEnvVars: ['NORTHFLANK_TOKEN', 'NORTHFLANK_PROJECT_ID'],
-  //   createCompute: () => northflank({
-  //     token: process.env.NORTHFLANK_TOKEN!,
-  //     projectId: process.env.NORTHFLANK_PROJECT_ID!,
-  //     runtime: 'node',
-  //   }),
-  // },
+  {
+    name: 'northflank',
+    requiredEnvVars: ['NORTHFLANK_TOKEN', 'NORTHFLANK_PROJECT_ID'],
+    createCompute: () => northflank({
+      token: process.env.NORTHFLANK_TOKEN!,
+      projectId: process.env.NORTHFLANK_PROJECT_ID!,
+      runtime: 'node',
+    }),
+  },
   {
     name: 'runloop',
     requiredEnvVars: ['RUNLOOP_API_KEY'],
