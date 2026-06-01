@@ -187,6 +187,8 @@ async function main() {
       tcp_inuse: sample.sockstat?.tcp_inuse ?? null,
       tcp_tw: sample.sockstat?.tcp_tw ?? null,
       loadavg_1m: sample.loadavg_1m,
+      cpu_user_us: sample.cpu_user_us,
+      cpu_system_us: sample.cpu_system_us,
     });
   }, METRICS_SAMPLE_MS);
 
