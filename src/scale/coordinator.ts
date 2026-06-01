@@ -259,6 +259,12 @@ async function main() {
         bench.emit('sandbox_result', {
           status: result.status,
           error_code: result.error_code,
+          // The create-phase failure taxonomy (timeout/http_error/network_error).
+          // Only carried for create failures (status==='failed') so a batch
+          // getBatchMetricCounts(field:'failure_class') reconstructs meta.json's
+          // create_failure_class exactly — readiness/liveness failures are
+          // excluded the same way the single-run meta.json excludes them.
+          failure_class: result.status === 'failed' ? result.failure_class : null,
           submission_segment,
         });
         bench.emit('latency_ms', {
