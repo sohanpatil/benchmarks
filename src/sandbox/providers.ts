@@ -51,7 +51,7 @@ export const providers: ProviderConfig[] = [
   {
     name: 'collimate',
     requiredEnvVars: ['COLLIMATE_API_KEY'],
-    createCompute: () => collimate({ apiKey: process.env.COLLIMATE_API_KEY! }),
+    createCompute: () => collimate({ apiKey: process.env.COLLIMATE_API_KEY!, templateId: 'node' }),
   },
   {
     name: 'daytona',
