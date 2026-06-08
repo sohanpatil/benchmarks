@@ -53,7 +53,7 @@ jobs:
           - blaxel
           - cloudflare
           - codesandbox
-          # - collimate
+          - collimate
           - daytona
           - declaw
           - e2b
@@ -93,7 +93,7 @@ jobs:
           CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
           CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
           CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
-          # COLLIMATE_API_KEY: ${{ secrets.COLLIMATE_API_KEY }}
+          COLLIMATE_API_KEY: ${{ secrets.COLLIMATE_API_KEY }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
           DECLAW_API_KEY: ${{ secrets.DECLAW_API_KEY }}
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}

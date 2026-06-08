@@ -1,7 +1,7 @@
 import { archil } from '@computesdk/archil';
 import { blaxel } from '@computesdk/blaxel';
 import { codesandbox } from '@computesdk/codesandbox';
-// import { collimate } from '@computesdk/collimate';
+import { collimate } from '@computesdk/collimate';
 import { cloudflare } from '@computesdk/cloudflare';
 import { daytona } from '@computesdk/daytona';
 import { declaw } from '@computesdk/declaw';
@@ -48,11 +48,11 @@ export const providers: ProviderConfig[] = [
     createCompute: () => codesandbox({ apiKey: process.env.CSB_API_KEY! }),
     destroyTimeoutMs: 1_000,
   },
-  // {
-  //   name: 'collimate',
-  //   requiredEnvVars: ['COLLIMATE_API_KEY'],
-  //   createCompute: () => collimate({ apiKey: process.env.COLLIMATE_API_KEY! }),
-  // },
+  {
+    name: 'collimate',
+    requiredEnvVars: ['COLLIMATE_API_KEY'],
+    createCompute: () => collimate({ apiKey: process.env.COLLIMATE_API_KEY! }),
+  },
   {
     name: 'daytona',
     requiredEnvVars: ['DAYTONA_API_KEY'],
