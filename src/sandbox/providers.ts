@@ -10,12 +10,12 @@ import { hopx } from '@computesdk/hopx';
 import { modal } from '@computesdk/modal';
 import { namespace } from '@computesdk/namespace';
 import { northflank } from '@computesdk/northflank';
+// import { railway } from '@computesdk/railway';
 import { runloop } from '@computesdk/runloop';
 import { sprites } from '@computesdk/sprites';
 import { tensorlake } from '@computesdk/tensorlake'
 import { upstash } from '@computesdk/upstash';
 import { vercel } from '@computesdk/vercel';
-import { compute } from 'computesdk';
 import type { ProviderConfig } from './types.js';
 
 /**
@@ -94,6 +94,11 @@ export const providers: ProviderConfig[] = [
       runtime: 'node',
     }),
   },
+  // {
+  //   name: 'railway',
+  //   requiredEnvVars: ['RAILWAY_API_TOKEN', 'RAILWAY_ENVIRONMENT_ID'],
+  //   createCompute: () => railway({ token: process.env.RAILWAY_API_TOKEN!, environmentId: process.env.RAILWAY_ENVIRONMENT_ID! }),
+  // },
   {
     name: 'runloop',
     requiredEnvVars: ['RUNLOOP_API_KEY'],
@@ -120,30 +125,4 @@ export const providers: ProviderConfig[] = [
     requiredEnvVars: ['VERCEL_TOKEN', 'VERCEL_TEAM_ID', 'VERCEL_PROJECT_ID'],
     createCompute: () => vercel({ token: process.env.VERCEL_TOKEN!, teamId: process.env.VERCEL_TEAM_ID!, projectId: process.env.VERCEL_PROJECT_ID! }),
   },
-  //
-  // --- Automatic mode (via ComputeSDK gateway) ---
-  // {
-  //   name: 'railway',
-  //   requiredEnvVars: ['COMPUTESDK_API_KEY', 'RAILWAY_API_KEY', 'RAILWAY_PROJECT_ID', 'RAILWAY_ENVIRONMENT_ID'],
-  //   createCompute: () => {
-  //     compute.setConfig({
-  //       provider: 'railway',
-  //       computesdkApiKey: process.env.COMPUTESDK_API_KEY!,
-  //       railway: { apiToken: process.env.RAILWAY_API_KEY!, projectId: process.env.RAILWAY_PROJECT_ID!, environmentId: process.env.RAILWAY_ENVIRONMENT_ID! },
-  //     } as any);
-  //     return compute;
-  //   },
-  // },
-  // {
-  //   name: 'render',
-  //   requiredEnvVars: ['COMPUTESDK_API_KEY', 'RENDER_API_KEY', 'RENDER_OWNER_ID'],
-  //   createCompute: () => {
-  //     compute.setConfig({
-  //       provider: 'render',
-  //       computesdkApiKey: process.env.COMPUTESDK_API_KEY!,
-  //       render: { apiKey: process.env.RENDER_API_KEY!, ownerId: process.env.RENDER_OWNER_ID! },
-  //     } as any);
-  //     return compute;
-  //   },
-  // },
 ];
