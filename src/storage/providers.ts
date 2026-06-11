@@ -16,7 +16,9 @@ export const storageProviders: StorageProviderConfig[] = [
     createStorage: () => s3({
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      region: process.env.AWS_REGION || 'us-east-1',
+      // @computesdk/s3 requires an explicit endpoint (it ignores `region`).
+      // Derive the AWS regional endpoint, or allow an S3-compatible override.
+      endpoint: process.env.S3_ENDPOINT || `https://s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com`,
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024], // 1MB, 4MB, 10MB, 16MB
   },
