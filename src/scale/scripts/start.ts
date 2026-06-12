@@ -43,6 +43,12 @@
 import 'dotenv/config';
 import { execSync } from 'node:child_process';
 import { fetchNamespace, getAndValidateCredentials } from '@computesdk/namespace';
+import { createBenchmarkClient } from '@computesdk/bench';
+
+// The platform benchmark these runs report under. One logical burst = one
+// platform run; each VM claims one planned worker for the provider participant.
+const BENCHMARK_SLUG = 'scale';
+const BENCH_TIMEOUT_MS = 120_000;
 
 // The container command — the coordinator bundle baked into the scale image
 // (see src/scale/Dockerfile: CMD ["node", "/app/coordinator.cjs"]). We run it
@@ -222,6 +228,11 @@ interface ShardOpts {
   groupId?: string;
   shardIndex?: number;
   shardCount?: number;
+  // Platform orchestration target; undefined when bench reporting is disabled
+  // (no COMPUTESDK_API_KEY, or run creation failed). The coordinator then runs
+  // Tigris-only.
+  benchmarkRunId?: string;
+  participantSlug?: string;
 }
 
 interface ShardResult { shard: number; runId: string; rc: number; }
@@ -245,11 +256,20 @@ function buildEnv(opts: ShardOpts): Record<string, string> {
     COORDINATOR_LOG_PATH: '/tmp/coordinator.log',
   };
   if (process.env.COMPUTESDK_API_KEY) env.COMPUTESDK_API_KEY = process.env.COMPUTESDK_API_KEY;
+  if (process.env.COMPUTESDK_ADMIN_API_KEY) env.COMPUTESDK_ADMIN_API_KEY = process.env.COMPUTESDK_ADMIN_API_KEY;
   if (opts.label !== undefined) env.LABEL = opts.label;
   if (opts.groupId !== undefined && opts.shardIndex !== undefined && opts.shardCount !== undefined) {
     env.GROUP_ID = opts.groupId;
     env.SHARD_INDEX = String(opts.shardIndex);
     env.SHARD_COUNT = String(opts.shardCount);
+  }
+  // Platform run/worker target. The coordinator claims one planned worker for
+  // (BENCHMARK_SLUG, BENCHMARK_RUN_ID, PARTICIPANT_SLUG). RUN_ID above stays the
+  // per-VM Tigris prefix and is independent of these.
+  if (opts.benchmarkRunId !== undefined) {
+    env.BENCHMARK_SLUG = BENCHMARK_SLUG;
+    env.BENCHMARK_RUN_ID = opts.benchmarkRunId;
+    env.PARTICIPANT_SLUG = opts.participantSlug ?? opts.provider;
   }
   for (const v of PROVIDER_SECRET_VARS) {
     const val = process.env[v];
@@ -346,6 +366,46 @@ async function launchOne(shard: number, opts: ShardOpts, log: Logger): Promise<S
   }
 }
 
+/**
+ * Create the platform run + plan one worker per VM before launching. Best-effort:
+ * if no key is present or the API rejects, returns null and the burst runs
+ * Tigris-only (bench reporting is optional). Needs an admin-scoped key for run
+ * creation (COMPUTESDK_ADMIN_API_KEY, falling back to COMPUTESDK_API_KEY).
+ */
+async function createPlatformRun(args: Args, perVm: number): Promise<string | null> {
+  const apiKey = process.env.COMPUTESDK_ADMIN_API_KEY ?? process.env.COMPUTESDK_API_KEY;
+  if (!apiKey) {
+    console.log('  bench:      disabled (no COMPUTESDK_API_KEY) — Tigris-only run\n');
+    return null;
+  }
+  try {
+    const client = createBenchmarkClient({ apiKey });
+    await client.upsertBenchmark(BENCHMARK_SLUG, {
+      name: 'Scale',
+      kind: 'scale',
+      config: { timeoutMs: BENCH_TIMEOUT_MS },
+    });
+    const { run } = await client.createRun(BENCHMARK_SLUG, {
+      name: args.label ?? `scale.${args.provider}`,
+      totalTasks: args.total,
+      workerCount: args.vms,
+      participants: [args.provider],
+      config: { timeoutMs: BENCH_TIMEOUT_MS },
+    });
+    // Plan exactly args.vms workers for the provider participant; each VM claims
+    // one (taskRange.count == perVm by construction).
+    await client.planWorkers(BENCHMARK_SLUG, run.id, args.provider, {
+      workerCount: args.vms,
+      targetConcurrency: perVm,
+    });
+    console.log(`  bench:      run ${run.id} (${args.vms} worker(s) planned for "${args.provider}")\n`);
+    return run.id;
+  } catch (err) {
+    console.warn(`  bench:      run creation failed (${errMsg(err)}) — continuing Tigris-only\n`);
+    return null;
+  }
+}
+
 // ----- orchestration --------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -389,11 +449,16 @@ async function main(): Promise<void> {
 
   const sharded = args.vms > 1;
 
+  // Create the platform run + plan workers up front (best-effort). The returned
+  // run id is injected into every VM so each claims one planned worker.
+  const benchmarkRunId = await createPlatformRun(args, perVm);
+
   // Launch a single shard. attempt 0 uses the canonical RUN_ID; retries mint a
   // fresh `-r{attempt}` RUN_ID so the retry's results don't collide with the
   // failed instance's. GROUP_ID + SHARD_INDEX stay fixed, so batch watch and
-  // aggregate still see it as the same shard (local RUN_IDs aren't sent to the
-  // bench API — see the Watch note below).
+  // aggregate still see it as the same shard. A retried VM re-claims a still-
+  // pending platform worker (one whose VM never claimed); if none remain it runs
+  // Tigris-only.
   const launchShard = (i: number, attempt: number): Promise<ShardResult> => {
     const tag = sharded ? `[s${pad(i)}${attempt > 0 ? `r${attempt}` : ''}] ` : '';
     const log: Logger = (line) => console.log(`${tag}${line}`);
@@ -407,6 +472,7 @@ async function main(): Promise<void> {
       githubSha,
       label: args.label,
       ...(sharded ? { groupId, shardIndex: i, shardCount: args.vms } : {}),
+      ...(benchmarkRunId ? { benchmarkRunId, participantSlug: args.provider } : {}),
     };
     return launchOne(i, opts, log);
   };
@@ -442,12 +508,17 @@ async function main(): Promise<void> {
     if (r.rc !== 0) failed++;
   }
   console.log('');
-  // The bench API mints its own run_… ids and only exposes shards under the
-  // batch (= group_id); the local RUN_IDs above are never sent to it. So watch
-  // by batch when sharded, and fall back to --recent for a lone run.
-  const watchTarget = sharded ? `--batch ${groupId} --expected ${args.total}` : `--recent 1`;
-  console.log(`  Watch:     npm run bench:scale:watch -- ${watchTarget}`);
-  console.log(`  Aggregate: npm run bench:scale:aggregate -- --group ${groupId}`);
+  // watch/aggregate read the platform run (all VMs report under the one run id
+  // created above). When bench is disabled, only the per-shard Tigris output
+  // exists, so fall back to --recent.
+  if (benchmarkRunId) {
+    console.log(`  run_id:    ${benchmarkRunId}`);
+    console.log(`  Watch:     npm run bench:scale:watch -- ${benchmarkRunId}`);
+    console.log(`  Aggregate: npm run bench:scale:aggregate -- --run ${benchmarkRunId}`);
+  } else {
+    console.log(`  Watch:     npm run bench:scale:watch -- --recent 1`);
+    console.log(`  Aggregate: npm run bench:scale:aggregate -- --recent`);
+  }
 
   if (failed > 0) {
     console.log(`\n${failed}/${finalResults.length} launches failed${args.retries > 0 ? ` after ${args.retries} retr${args.retries === 1 ? 'y' : 'ies'}` : ''}`);

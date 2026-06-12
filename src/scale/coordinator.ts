@@ -2,8 +2,7 @@ import { config as loadDotenv } from 'dotenv';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { createBench } from '@computesdk/bench';
-import type { BenchContext } from '@computesdk/bench';
+import { BenchReporter } from './bench-reporter.js';
 import { getProvider } from './providers.js';
 import { log } from './logger.js';
 import { TigrisSink } from './sinks/tigris.js';
@@ -42,8 +41,16 @@ async function main() {
   })();
 
   const provider = getProvider(PROVIDER);
-  const benchApiKey = process.env.COMPUTESDK_API_KEY;
+  const benchApiKey = process.env.COMPUTESDK_API_KEY ?? process.env.COMPUTESDK_ADMIN_API_KEY;
   const LABEL = process.env.LABEL ?? `scale.${PROVIDER}`;
+
+  // Platform orchestration target. start.ts creates the run + plans the workers,
+  // then injects these so each VM claims one worker assignment. When unset (e.g.
+  // a bare local run with no run created), platform reporting is skipped and the
+  // burst still runs + writes Tigris exactly as before — bench ingest is optional.
+  const BENCHMARK_SLUG = process.env.BENCHMARK_SLUG ?? 'scale';
+  const BENCHMARK_RUN_ID = process.env.BENCHMARK_RUN_ID;
+  const PARTICIPANT_SLUG = process.env.PARTICIPANT_SLUG ?? PROVIDER;
 
   // Allow env override of concurrencyTarget for local smoke tests.
   const override = process.env.CONCURRENCY_TARGET;
@@ -105,23 +112,31 @@ async function main() {
   const createFailureClass = { timeout: 0, http_error: 0, network_error: 0 };
   const emittedSegmentCounts = { first_25pct: 0, middle_50pct: 0, last_25pct: 0 };
 
-  // Optional: also have the bench SDK mirror output to a file (off unless the
-  // env var is set). The coordinator.log uploaded to Tigris is captured
-  // independently by the logger's in-memory buffer (see log.dump()), so this is
-  // no longer required for Tigris log durability.
-  const COORDINATOR_LOG_PATH = process.env.COORDINATOR_LOG_PATH;
-  const bench = createBench({
-    label: LABEL,
-    provider: PROVIDER,
-    apiKey: benchApiKey,
-    batch: shard?.group_id,
-    shard: shard
-      ? { index: shard.shard_index, count: shard.shard_count }
-      : undefined,
-    captureOutput: COORDINATOR_LOG_PATH
-      ? { file: COORDINATOR_LOG_PATH }
-      : undefined,
-  });
+  // Claim one platform worker for this VM. Reporting is best-effort and fully
+  // optional: a missing key/run, an unclaimable worker, or any telemetry error
+  // degrades to a Tigris-only run rather than failing the burst.
+  const bench = benchApiKey && BENCHMARK_RUN_ID
+    ? await BenchReporter.claim({
+        apiKey: benchApiKey,
+        benchmarkSlug: BENCHMARK_SLUG,
+        runId: BENCHMARK_RUN_ID,
+        participantSlug: PARTICIPANT_SLUG,
+        processKind: 'container',
+        processKey: instance_id,
+      })
+    : null;
+
+  // The platform plans each worker's task range; honour its count when present
+  // so progressTotal and global task indexes line up across the fleet. Falls
+  // back to the env-provided concurrencyTarget for unreported runs.
+  const burstSize = bench?.taskCount ?? provider.concurrencyTarget;
+  if (bench && bench.taskCount !== provider.concurrencyTarget) {
+    log.warn(
+      `bench: planned task count ${bench.taskCount} != CONCURRENCY_TARGET ` +
+      `${provider.concurrencyTarget}; using planned count for the burst`,
+    );
+    provider.concurrencyTarget = burstSize;
+  }
 
   // System-metrics sampling. Event-loop delay needs an enabled histogram;
   // /proc/self/fd and /proc/net/sockstat are Linux-only (silent null elsewhere).
@@ -180,18 +195,13 @@ async function main() {
     metricsSamples.push(sample);
     return sample;
   };
+  // The coordinator_metrics stream has no equivalent in the orchestrator API
+  // (no generic metric ingestion), so system health lives solely in Tigris
+  // metrics.jsonl. We reuse this 5s tick to send the platform a progress +
+  // in-flight-concurrency heartbeat (surfaced via getRunTimeline).
   const metricsInterval = setInterval(() => {
-    const sample = sampleMetrics();
-    bench.emit('coordinator_metrics', {
-      mem_rss_mb: sample.mem_rss_mb,
-      event_loop_p99_ms: sample.event_loop_p99_ms,
-      open_fds: sample.open_fds,
-      tcp_inuse: sample.sockstat?.tcp_inuse ?? null,
-      tcp_tw: sample.sockstat?.tcp_tw ?? null,
-      loadavg_1m: sample.loadavg_1m,
-      cpu_user_us: sample.cpu_user_us,
-      cpu_system_us: sample.cpu_system_us,
-    });
+    sampleMetrics();
+    if (bench) void bench.heartbeat(lastStats.in_flight);
   }, METRICS_SAMPLE_MS);
 
   let shuttingDown = false;
@@ -256,98 +266,45 @@ async function main() {
         const submission_segment = segmentOf(result.sandbox_idx);
         emittedSegmentCounts[submission_segment]++;
 
-        bench.emit('sandbox_result', {
-          status: result.status,
-          error_code: result.error_code,
-          // The create-phase failure taxonomy (timeout/http_error/network_error).
-          // Only carried for create failures (status==='failed') so a batch
-          // getBatchMetricCounts(field:'failure_class') reconstructs meta.json's
-          // create_failure_class exactly — readiness/liveness failures are
-          // excluded the same way the single-run meta.json excludes them.
+        // Stream the per-sandbox result to the platform as a task record. The
+        // four-state status, create-failure class and submission segment ride
+        // along in status/errorCode/data so getRunResults / getRunTaskResults
+        // can roll them up; Tigris raw.jsonl remains the lossless record.
+        bench?.recordResult(result, {
+          submission_segment,
           failure_class: result.status === 'failed' ? result.failure_class : null,
-          submission_segment,
         });
-        bench.emit('latency_ms', {
-          value: result.latency_ms,
-          submission_segment,
-        });
-        if (result.first_command_ms != null) {
-          bench.emit('first_command_ms', {
-            value: result.first_command_ms,
-            submission_segment,
-          });
-          bench.emit('tti_ms', {
-            value: result.latency_ms + result.first_command_ms,
-            submission_segment,
-          });
-        }
         tigris.writeResult(result);
       },
       onProgress(stats) {
         lastStats = stats;
-        bench.progress({
-          done: stats.done,
-          inFlight: stats.in_flight,
-          errors: stats.errors,
-          total: provider.concurrencyTarget,
-        });
-        bench.emit('concurrency', {
-          active: stats.in_flight,
-        });
+        bench?.setStats(stats);
       },
     });
 
-    bench.add(`scale.${PROVIDER}.create`, async (ctx: BenchContext) => {
-      await flow.createOne(ctx.iteration, ctx);
-    });
-    bench.add(`scale.${PROVIDER}.exec.initial`, async (ctx: BenchContext) => {
-      await flow.execInitialOne(ctx.iteration, ctx);
-    });
+    // Two-phase, barriered burst (see runner.ts). Every stage fires all
+    // `burstSize` task indexes at t=0 (concurrency == iterations, no pool) and
+    // we await the whole stage before the next — this is the global barrier the
+    // success/partial distinction depends on. The per-sandbox methods catch
+    // their own errors (recording status + emitting), so a stage never throws
+    // from a sandbox failure; `destroy` therefore always runs (the old
+    // `runOnFailed` behaviour) and survivors are torn down regardless of phase-1
+    // outcome.
+    const indices = Array.from({ length: burstSize }, (_, i) => i);
+    const runStage = (fn: (idx: number) => Promise<void>): Promise<void[]> =>
+      Promise.all(indices.map(fn));
+
+    log.phase(`create — firing ${burstSize} requests at t=0 (no stagger)`);
+    await runStage((i) => flow.createOne(i));
+    await runStage((i) => flow.execInitialOne(i));
     if (pauseMs > 0) {
-      bench.add(`scale.${PROVIDER}.pause`, async (_ctx: BenchContext) => {
-        if (_ctx.iteration === 0) {
-          log.phase(`pause — waiting ${pauseMs}ms`);
-          await flow.pause(pauseMs);
-        }
-      });
+      log.phase(`pause — waiting ${pauseMs}ms`);
+      await flow.pause(pauseMs);
     }
-    bench.add(`scale.${PROVIDER}.exec.after_pause`, async (ctx: BenchContext) => {
-      await flow.execAfterPauseOne(ctx.iteration);
-    });
-    bench.add(`scale.${PROVIDER}.destroy`, async (ctx: BenchContext) => {
-      await flow.destroyOne(ctx.iteration, ctx);
-      if (ctx.iteration === 0) {
-        ctx.emitMetric('sandbox_result_count', {
-          total: provider.concurrencyTarget,
-          success: statusCounts.success,
-          partial: statusCounts.partial,
-          readiness_failed: statusCounts.readiness_failed,
-          failed: statusCounts.failed,
-        });
-      }
-    }, { runOnFailed: true });
-    log.phase(`create — firing ${provider.concurrencyTarget} requests at t=0 (no stagger)`);
-    try {
-      await bench.run({
-        mode: 'concurrent',
-        iterations: provider.concurrencyTarget,
-        concurrency: provider.concurrencyTarget,
-        warmup: 0,
-        throwOnError: false,
-      });
-    } catch (benchErr: any) {
-      // The bench SDK already swallows telemetry/network errors internally.
-      // Any error that escapes here is either from the burst itself or an
-      // unexpected bench internal fault. If the burst completed (all sandboxes
-      // processed) we treat it as non-fatal and continue with result
-      // aggregation; otherwise we re-throw so the outer catch can handle
-      // the genuine burst failure.
-      if (lastStats.done < provider.concurrencyTarget) {
-        throw benchErr;
-      }
-      log.warn(`bench.run failed after burst completed; treating as non-fatal: ${benchErr?.message ?? benchErr}`);
-    }
-    log.phase(`create complete — ${flow.countSurvivors()}/${provider.concurrencyTarget} sandboxes alive`);
+    await runStage((i) => flow.execAfterPauseOne(i));
+    await runStage((i) => flow.destroyOne(i));
+
+    log.phase(`create complete — ${flow.countSurvivors()}/${burstSize} sandboxes alive`);
 
     const latencies = okResults.map(r => r.ms).sort((a, b) => a - b);
     const pct = (q: number) =>
@@ -545,6 +502,11 @@ async function main() {
       log.warn(`create-failure class: timeouts=${final.timeouts} http_errors=${final.http_errors} network_errors=${final.network_errors}`);
     }
     log.phase('flushing complete');
+    // Flush any buffered task records and mark this worker complete. Per-sandbox
+    // failures are expected data, not a worker failure, so the worker is
+    // "completed" whenever the burst ran end-to-end (only an outright coordinator
+    // crash, handled in the catch below, fails the worker).
+    if (bench) await bench.finish(false);
     await tigris.writeLog(log.dump());
     // No explicit teardown: the coordinator is the container's PID 1, so when
     // this process exits the Namespace instance auto-reaps (see start.ts).
@@ -552,6 +514,7 @@ async function main() {
     clearInterval(metricsInterval);
     log.error(`run failed: ${err?.message ?? err}`);
     try {
+      if (bench) await bench.finish(true);
       await tigris.close();
       if (metricsSamples.length > 0) await tigris.writeMetrics(metricsSamples);
       await tigris.writeLog(log.dump());

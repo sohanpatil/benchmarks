@@ -60,7 +60,7 @@ export class BurstLifecycle {
     this.survivors = new Map();
   }
 
-  async createOne(idx: number, ctx?: any): Promise<void> {
+  async createOne(idx: number): Promise<void> {
     const { sandboxOptions, perRequestTimeoutMs = 120_000 } = this.config;
     this.in_flight++;
     const started_at = new Date().toISOString();
@@ -93,11 +93,11 @@ export class BurstLifecycle {
       result.error_code = err?.code ?? null;
       result.error_message = truncate(err?.message ?? String(err), 500);
       result.latency_ms = Math.round(performance.now() - t0);
-      await this.emit(result, ctx);
+      await this.emit(result);
     }
   }
 
-  async execInitialOne(idx: number, ctx?: any): Promise<void> {
+  async execInitialOne(idx: number): Promise<void> {
     const pending = this.survivors.get(idx);
     if (!pending) return;
     const { sandbox, result } = pending;
@@ -116,7 +116,7 @@ export class BurstLifecycle {
         Promise.resolve(sandbox.destroy()).catch(() => {});
       }
       this.survivors.delete(idx);
-      await this.emit(result, ctx);
+      await this.emit(result);
     }
   }
 
@@ -142,7 +142,7 @@ export class BurstLifecycle {
     }
   }
 
-  async destroyOne(idx: number, ctx?: any): Promise<void> {
+  async destroyOne(idx: number): Promise<void> {
     const pending = this.survivors.get(idx);
     if (!pending) return;
     this.survivors.delete(idx);
@@ -150,33 +150,20 @@ export class BurstLifecycle {
     if (sandbox?.destroy) {
       await Promise.resolve(sandbox.destroy()).catch(() => {});
     }
-    await this.emit(result, ctx);
+    await this.emit(result);
   }
 
   countSurvivors(): number {
     return this.survivors.size;
   }
 
-  private async emit(result: SandboxResult, ctx?: any): Promise<void> {
+  private async emit(result: SandboxResult): Promise<void> {
     const { concurrencyTarget } = this.config;
     if (!result.completed_at) result.completed_at = new Date().toISOString();
     this.in_flight--;
     this.done++;
     try { await this.callbacks.onResult(result); } catch { /* swallow */ }
     this.callbacks.onProgress({ done: this.done, in_flight: this.in_flight, errors: this.errors });
-
-    if (ctx?.log) {
-      ctx.log(JSON.stringify({
-        __type: 'sandbox',
-        idx: result.sandbox_idx,
-        started_at: result.started_at,
-        completed_at: result.completed_at,
-        latency_ms: result.latency_ms,
-        first_command_ms: result.first_command_ms,
-        status: result.status,
-        error_code: result.error_code,
-      }));
-    }
 
     if (result.status === 'success') {
       const sb = result.provider_metadata?.sandboxId
