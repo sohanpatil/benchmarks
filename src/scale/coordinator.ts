@@ -140,7 +140,11 @@ async function main() {
 
   // System-metrics sampling. Event-loop delay needs an enabled histogram;
   // /proc/self/fd and /proc/net/sockstat are Linux-only (silent null elsewhere).
-  const METRICS_SAMPLE_MS = 5_000;
+  // Bursts often complete in 1-3s, so sample frequently enough to capture a
+  // real timeline rather than a single end-of-run snapshot.
+  const METRICS_SAMPLE_MS = 200;
+  // Platform heartbeat cadence — a network call, so kept coarser than metrics sampling.
+  const HEARTBEAT_MS = 5_000;
   const eloopHist = monitorEventLoopDelay({ resolution: 20 });
   eloopHist.enable();
   const cpuBaseline = process.cpuUsage();
@@ -197,12 +201,14 @@ async function main() {
   };
   // The coordinator_metrics stream has no equivalent in the orchestrator API
   // (no generic metric ingestion), so system health lives solely in Tigris
-  // metrics.jsonl. We reuse this 5s tick to send the platform a progress +
-  // in-flight-concurrency heartbeat (surfaced via getRunTimeline).
+  // metrics.jsonl.
   const metricsInterval = setInterval(() => {
     sampleMetrics();
-    if (bench) void bench.heartbeat(lastStats.in_flight);
   }, METRICS_SAMPLE_MS);
+  // Platform heartbeat — progress + in-flight concurrency, surfaced via getRunTimeline.
+  const heartbeatInterval = setInterval(() => {
+    if (bench) void bench.heartbeat(lastStats.in_flight);
+  }, HEARTBEAT_MS);
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
@@ -210,6 +216,7 @@ async function main() {
     shuttingDown = true;
     log.phase(`${signal} received — flushing`);
     clearInterval(metricsInterval);
+    clearInterval(heartbeatInterval);
     try {
       await tigris.close();
       if (metricsSamples.length > 0) await tigris.writeMetrics(metricsSamples);
@@ -454,6 +461,7 @@ async function main() {
     // System-metrics summary for the meta.json. The full series is in
     // <run_id>/metrics.jsonl; this is the at-a-glance view.
     clearInterval(metricsInterval);
+    clearInterval(heartbeatInterval);
     sampleMetrics();
     const metrics_summary = metricsSamples.length === 0 ? null : {
       sample_count: metricsSamples.length,
@@ -512,6 +520,7 @@ async function main() {
     // this process exits the Namespace instance auto-reaps (see start.ts).
   } catch (err: any) {
     clearInterval(metricsInterval);
+    clearInterval(heartbeatInterval);
     log.error(`run failed: ${err?.message ?? err}`);
     try {
       if (bench) await bench.finish(true);
