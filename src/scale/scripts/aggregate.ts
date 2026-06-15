@@ -202,11 +202,11 @@ const taskIndexBuckets = (taskResults?.buckets ?? []).map(b => ({
 }));
 
 // Concurrency over time: sum active across all non-live telemetry steps per time
-// bucket. live.sandboxes is emitted separately so it does not double-count with
-// the ready.barrier coordination signal.
+// bucket. sandbox.live is emitted separately so it does not double-count with
+// the SDK's live-hold concurrency signal.
 const concByT = new Map<number, number>();
 for (const pt of timeline?.concurrency.points ?? []) {
-  if (pt.step === 'live.sandboxes') continue;
+  if (pt.step === 'sandbox.live') continue;
   concByT.set(pt.tMs, (concByT.get(pt.tMs) ?? 0) + pt.active);
 }
 const concurrencyTimeline = [...concByT.entries()]
@@ -228,7 +228,7 @@ if (concurrencyTimeline.length > 0) {
 // True live ready sandboxes over time, emitted from create start through teardown.
 const liveByT = new Map<number, number>();
 for (const pt of timeline?.concurrency.points ?? []) {
-  if (pt.step !== 'live.sandboxes') continue;
+  if (pt.step !== 'sandbox.live') continue;
   liveByT.set(pt.tMs, (liveByT.get(pt.tMs) ?? 0) + pt.active);
 }
 const liveSandboxesTimeline = [...liveByT.entries()]

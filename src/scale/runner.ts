@@ -6,8 +6,8 @@ import type {
   ProgressStats,
 } from './types.js';
 
-const FIRST_COMMAND_TIMEOUT_MS = 30_000;
-const LIVENESS_CHECK_TIMEOUT_MS = 30_000;
+export const FIRST_COMMAND_TIMEOUT_MS = 30_000;
+export const LIVENESS_CHECK_TIMEOUT_MS = 30_000;
 
 export interface RunnerCallbacks {
   onResult: (result: SandboxResult) => Promise<void> | void;
@@ -209,7 +209,7 @@ export class BurstLifecycle {
  * value to keep the JSON bounded.
  */
 const SECRET_KEY_RE = /(api[_-]?key|token|secret|password|credential)/i;
-function extractProviderMetadata(sandbox: any): Record<string, unknown> | null {
+export function extractProviderMetadata(sandbox: any): Record<string, unknown> | null {
   if (!sandbox || typeof sandbox !== 'object') return null;
   const meta: Record<string, unknown> = {};
   for (const key of Object.keys(sandbox)) {
@@ -244,7 +244,7 @@ function truncate(s: string, n: number): string {
 // underlying SDK request. If sandbox.create() resolves after the timeout,
 // the sandbox is created and the handle is lost (leaked). True cancellation
 // requires SDK-level support for AbortSignal or similar.
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+export async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Operation timed out after ${ms}ms`)), ms);
