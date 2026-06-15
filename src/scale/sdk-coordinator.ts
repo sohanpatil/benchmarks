@@ -199,12 +199,15 @@ function normalizeTaskRecord(record: TaskResultRecord): SandboxResult {
 
   const failureClass = lifecycleStatus === 'success' ? null : classifyFailure(failedStep?.errorCode);
   const data = (record.data ?? {}) as Record<string, unknown>;
+  const createMs = createStep?.latencyMs ?? record.latencyMs ?? 0;
+  const firstCommandMs = initialStep?.status === 'success' ? initialStep.latencyMs ?? null : null;
+  const ttiMs = firstCommandMs == null ? null : createMs + firstCommandMs;
   const sandboxResult: SandboxResult = {
     sandbox_idx: record.taskIndex,
     started_at: record.startedAt ?? createStep?.startedAt ?? new Date().toISOString(),
     completed_at: record.completedAt ?? new Date().toISOString(),
-    latency_ms: createStep?.latencyMs ?? record.latencyMs ?? 0,
-    first_command_ms: record.firstCommandMs ?? null,
+    latency_ms: createMs,
+    first_command_ms: firstCommandMs,
     status: lifecycleStatus,
     failure_class: failureClass,
     http_status: null,
@@ -220,7 +223,8 @@ function normalizeTaskRecord(record: TaskResultRecord): SandboxResult {
     http_status: null,
     error_message: null,
     create_ms: createStep?.latencyMs ?? null,
-    first_command_ms: record.firstCommandMs,
+    first_command_ms: firstCommandMs,
+    tti_ms: ttiMs,
     live_ms: liveStep?.latencyMs ?? null,
     final_command_ms: finalStep?.latencyMs ?? null,
     sandbox_result: sandboxResult as unknown as JsonObject,
@@ -386,7 +390,7 @@ function buildMeta(
     .filter((value): value is number => value != null);
   const ttiValues = byStatus.success
     .filter(result => result.first_command_ms != null)
-    .map(result => result.latency_ms + (result.first_command_ms as number));
+    .map(ttiMsOf);
 
   return {
     sandboxes_attempted: target,
@@ -431,6 +435,10 @@ function metricsSummary(samples: MetricsSample[]): Record<string, number> | null
     total_cpu_user_us: samples[samples.length - 1].cpu_user_us,
     total_cpu_system_us: samples[samples.length - 1].cpu_system_us,
   };
+}
+
+function ttiMsOf(result: SandboxResult): number {
+  return result.latency_ms + (result.first_command_ms ?? 0);
 }
 
 function distributionOf(values: number[]): Record<string, number> | null {
