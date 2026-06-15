@@ -201,9 +201,12 @@ const taskIndexBuckets = (taskResults?.buckets ?? []).map(b => ({
   max_ms: b.latencyMs.max,
 }));
 
-// Concurrency over time: sum active across all workers/steps per time bucket.
+// Concurrency over time: sum active across all non-live telemetry steps per time
+// bucket. live.sandboxes is emitted separately so it does not double-count with
+// the ready.barrier coordination signal.
 const concByT = new Map<number, number>();
 for (const pt of timeline?.concurrency.points ?? []) {
+  if (pt.step === 'live.sandboxes') continue;
   concByT.set(pt.tMs, (concByT.get(pt.tMs) ?? 0) + pt.active);
 }
 const concurrencyTimeline = [...concByT.entries()]
@@ -218,6 +221,28 @@ if (concurrencyTimeline.length > 0) {
     peak_t_ms: peakT,
     mean_concurrent: Math.round(concurrencyTimeline.reduce((s, p) => s + p.active, 0) / concurrencyTimeline.length),
     total_run_ms: concurrencyTimeline[concurrencyTimeline.length - 1].t_ms,
+    sample_interval_ms: timeline?.concurrency ? (timeline.eventRate.bucketMs ?? 1000) : 1000,
+  };
+}
+
+// True live ready sandboxes over time, emitted at the ready hold by each worker.
+const liveByT = new Map<number, number>();
+for (const pt of timeline?.concurrency.points ?? []) {
+  if (pt.step !== 'live.sandboxes') continue;
+  liveByT.set(pt.tMs, (liveByT.get(pt.tMs) ?? 0) + pt.active);
+}
+const liveSandboxesTimeline = [...liveByT.entries()]
+  .sort((a, b) => a[0] - b[0])
+  .map(([t_ms, active]) => ({ t_ms, active }));
+let liveSandboxesSummary: Record<string, number> | null = null;
+if (liveSandboxesTimeline.length > 0) {
+  let peak = -Infinity, peakT = 0;
+  for (const p of liveSandboxesTimeline) if (p.active > peak) { peak = p.active; peakT = p.t_ms; }
+  liveSandboxesSummary = {
+    peak_concurrent: peak,
+    peak_t_ms: peakT,
+    mean_concurrent: Math.round(liveSandboxesTimeline.reduce((s, p) => s + p.active, 0) / liveSandboxesTimeline.length),
+    total_run_ms: liveSandboxesTimeline[liveSandboxesTimeline.length - 1].t_ms,
     sample_interval_ms: timeline?.concurrency ? (timeline.eventRate.bucketMs ?? 1000) : 1000,
   };
 }
@@ -277,6 +302,8 @@ const aggregate = {
   submission_segments: null,
   concurrency_summary: concurrencySummary,
   concurrency_timeline: concurrencyTimeline.length ? concurrencyTimeline : null,
+  live_sandboxes_summary: liveSandboxesSummary,
+  live_sandboxes_timeline: liveSandboxesTimeline.length ? liveSandboxesTimeline : null,
   throughput_timeline: throughputTimeline.length ? throughputTimeline : null,
   metrics_summary: null,
   participants: participantSummaries,
@@ -329,6 +356,10 @@ if (concurrencySummary) {
   console.log('');
   console.log(`  concurrency:      peak=${concurrencySummary.peak_concurrent}  mean=${concurrencySummary.mean_concurrent}  ` +
     `(over ${(concurrencySummary.total_run_ms / 1000).toFixed(0)}s, summed across workers)`);
+}
+if (liveSandboxesSummary) {
+  console.log(`  live sandboxes:   peak=${liveSandboxesSummary.peak_concurrent}  mean=${liveSandboxesSummary.mean_concurrent}  ` +
+    `(over ${(liveSandboxesSummary.total_run_ms / 1000).toFixed(0)}s, ready hold)`);
 }
 
 console.log('');

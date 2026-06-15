@@ -343,12 +343,12 @@ async function main() {
       try {
         // At release every shard is holding simultaneously, so the platform's
         // aggregated in-flight count is the true fleet-wide live concurrency.
-        const hold = await bench.waitForStepReady('ready.barrier', barrierTimeoutMs);
+        const hold = await bench.waitForStepReady('ready.barrier', barrierTimeoutMs, 1_000, undefined, survivors);
         global_concurrency = {
           peak_concurrent: hold.globalInFlight ?? survivors,
           target: hold.globalTotal,
           source: hold.globalInFlight != null ? 'platform' : 'unavailable',
-          measured_at: new Date().toISOString(),
+          measured_at: hold.measuredAt,
         };
         log.ok(`global concurrency at hold: ${global_concurrency.peak_concurrent}/${global_concurrency.target} ` +
           `alive across all shards (source=${global_concurrency.source})`);

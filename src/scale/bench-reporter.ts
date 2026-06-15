@@ -30,6 +30,7 @@ import type {
   JsonObject,
   TaskResultRecord,
   TaskStepRecord,
+  WorkerConcurrencySample,
 } from '@computesdk/bench';
 import type { ProgressStats, SandboxResult } from './types.js';
 import { log } from './logger.js';
@@ -55,10 +56,16 @@ export interface StepReadyResult {
   globalInFlight: number | null;
   /** Global target == participant total tasks across all shards. */
   globalTotal: number;
+  /** ISO timestamp for the platform sample. */
+  measuredAt: string;
 }
 
 /** Maps one finalized SandboxResult onto the platform's task-result shape. */
-function toTaskRecord(r: SandboxResult, baseIdx: number, extraData?: JsonObject): TaskResultRecord {
+function toTaskRecord(
+  r: SandboxResult,
+  baseIdx: number,
+  extraData?: JsonObject,
+): TaskResultRecord {
   // Per-step records let `getRunResults().steps[]` report create / readiness
   // latency summaries even though we don't drive the SDK's step machinery.
   const steps: TaskStepRecord[] = [
@@ -74,7 +81,6 @@ function toTaskRecord(r: SandboxResult, baseIdx: number, extraData?: JsonObject)
   } else if (r.status === 'readiness_failed') {
     steps.push({ name: 'exec.initial', status: 'error', ...(r.error_code ? { errorCode: r.error_code } : {}) });
   }
-
   const data: JsonObject = {
     failure_class: r.failure_class,
     http_status: r.http_status,
@@ -115,7 +121,7 @@ export class BenchReporter {
   // Otherwise the periodic heartbeat overwrites the worker's snapshot with
   // `lifecycle`/`[]` and the platform stops seeing this worker at the barrier,
   // so the aggregate never reaches target and `ready` never latches.
-  private barrier: { step: string; active: number } | null = null;
+  private barrier: { step: string; active: number; liveActive?: number } | null = null;
 
   private constructor(client: BenchmarkClient, cfg: BenchReporterConfig, assignment: BenchmarkAssignment) {
     this.client = client;
@@ -184,8 +190,9 @@ export class BenchReporter {
     // A barrier wait takes precedence: keep this worker visible at the barrier
     // step so the periodic heartbeat reinforces (rather than overwrites) the
     // sample that `waitForStepReady` is polling on.
+    const barrierConcurrency = this.barrier ? this.barrierConcurrency() : null;
     const concurrency = this.barrier
-      ? { currentStep: this.barrier.step, concurrency: [{ step: this.barrier.step, active: this.barrier.active, target: this.total }] }
+      ? { currentStep: this.barrier.step, concurrency: barrierConcurrency ?? [] }
       : activeInFlight > 0
         ? { currentStep: 'lifecycle', concurrency: [{ step: 'lifecycle', active: activeInFlight, target: this.total }] }
         : { concurrency: [] };
@@ -212,10 +219,11 @@ export class BenchReporter {
     timeoutMs: number,
     pollIntervalMs = 1_000,
     active = this.total,
+    liveActive?: number,
   ): Promise<StepReadyResult> {
     // Mark the barrier active so the periodic heartbeat keeps re-reporting this
     // step (see `heartbeat`) and never clobbers our sample while we wait.
-    this.barrier = { step, active };
+    this.barrier = { step, active, liveActive };
     const started = Date.now();
     try {
       while (true) {
@@ -229,7 +237,7 @@ export class BenchReporter {
           progressErrors: this.lastStats.errors,
           progressTotal: this.total,
           currentStep: step,
-          concurrency: [{ step, active, target: this.total }],
+          concurrency: this.barrierConcurrency(),
         });
 
         const progress = await this.client.getRunProgress(this.cfg.benchmarkSlug, this.cfg.runId);
@@ -240,8 +248,9 @@ export class BenchReporter {
           // the aggregated in-flight count is the true fleet-wide live
           // concurrency. totalTasks is the global target across all shards.
           return {
-            globalInFlight: participant?.tasks?.inFlight ?? null,
-            globalTotal: participant?.totalTasks ?? this.total,
+            globalInFlight: typeof participant?.tasks?.inFlight === 'number' ? participant.tasks.inFlight : null,
+            globalTotal: typeof participant?.totalTasks === 'number' ? participant.totalTasks : this.total,
+            measuredAt: new Date().toISOString(),
           };
         }
         if (Date.now() - started >= timeoutMs) {
@@ -252,6 +261,17 @@ export class BenchReporter {
     } finally {
       this.barrier = null;
     }
+  }
+
+  private barrierConcurrency(): WorkerConcurrencySample[] {
+    if (!this.barrier) return [];
+    const samples: WorkerConcurrencySample[] = [
+      { step: this.barrier.step, active: this.barrier.active, target: this.total },
+    ];
+    if (this.barrier.liveActive !== undefined) {
+      samples.push({ step: 'live.sandboxes', active: this.barrier.liveActive, target: this.total });
+    }
+    return samples;
   }
 
   /** Serialize `sendTaskResults` so sequenceNumbers stay ordered. */
