@@ -207,6 +207,42 @@ export class BenchReporter {
     return this.flushChain;
   }
 
+  /** True once a worker is claimed and artifacts/results can be reported. */
+  get active(): boolean {
+    return true;
+  }
+
+  /**
+   * Upload a blob as a worker artifact: create the artifact record (which
+   * returns a presigned PUT url), then PUT the bytes. Must run while the worker
+   * attempt is still open (i.e. before finish()). Best-effort — returns false on
+   * any failure rather than throwing, so a telemetry hiccup never aborts the run.
+   */
+  async uploadArtifact(kind: string, name: string, contentType: string, body: string): Promise<boolean> {
+    const sizeBytes = Buffer.byteLength(body);
+    try {
+      const res = await this.client.createWorkerArtifact(
+        this.cfg.benchmarkSlug, this.cfg.runId, this.assignment.workerId,
+        { attemptId: this.assignment.attemptId, kind, name, contentType, metadata: { sizeBytes } },
+      );
+      const uploadUrl = res.uploadUrl ?? res.artifact?.uploadUrl;
+      if (!uploadUrl) {
+        log.warn(`bench: artifact ${name} created but no uploadUrl returned`);
+        return false;
+      }
+      const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body });
+      if (!put.ok) {
+        log.warn(`bench: artifact ${name} PUT failed: ${put.status} ${put.statusText}`);
+        return false;
+      }
+      log.ok(`bench: uploaded artifact ${name} (${kind}, ${sizeBytes}b)`);
+      return true;
+    } catch (err: any) {
+      log.warn(`bench: artifact ${name} upload failed: ${err?.message ?? err}`);
+      return false;
+    }
+  }
+
   /** Final flush + mark the worker completed (or failed). Best-effort. */
   async finish(failed: boolean): Promise<void> {
     await this.flush(true).catch(() => {});

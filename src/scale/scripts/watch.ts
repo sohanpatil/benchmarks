@@ -15,7 +15,7 @@
  *                       best-effort (empty until the analytics pipeline catches
  *                       up). The four-state taxonomy (partial/readiness_failed)
  *                       collapses to success/error/other here; the full split
- *                       lives in Tigris and in aggregate.ts.
+ *                       lives only in the per-shard raw artifacts.
  *
  * Exits when every watched run is terminal. Exit code: 0 if all completed
  * cleanly, 1 if any failed.

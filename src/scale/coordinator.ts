@@ -5,7 +5,6 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { BenchReporter } from './bench-reporter.js';
 import { getProvider } from './providers.js';
 import { log } from './logger.js';
-import { TigrisSink } from './sinks/tigris.js';
 import { BurstLifecycle } from './runner.js';
 import type { ProgressStats, MetricsSample } from './types.js';
 
@@ -16,14 +15,9 @@ loadDotenv();
 async function main() {
   const RUN_ID = required('RUN_ID');
   const PROVIDER = required('PROVIDER');
-  const TIGRIS_STORAGE_ENDPOINT = required('TIGRIS_STORAGE_ENDPOINT');
-  const TIGRIS_STORAGE_BUCKET = required('TIGRIS_STORAGE_BUCKET');
-  const TIGRIS_STORAGE_ACCESS_KEY_ID = required('TIGRIS_STORAGE_ACCESS_KEY_ID');
-  const TIGRIS_STORAGE_SECRET_ACCESS_KEY = required('TIGRIS_STORAGE_SECRET_ACCESS_KEY');
 
   const commit_sha = process.env.GITHUB_SHA ?? 'local';
   const instance_id = process.env.INSTANCE_ID ?? 'local';
-  const tigris_prefix = `s3://${TIGRIS_STORAGE_BUCKET}/${RUN_ID}/`;
 
   // Sharded-burst metadata. Set by src/scale/scripts/start.ts when a
   // logical burst is spread across multiple VMs. Unset for single-VM runs.
@@ -45,9 +39,10 @@ async function main() {
   const LABEL = process.env.LABEL ?? `scale.${PROVIDER}`;
 
   // Platform orchestration target. start.ts creates the run + plans the workers,
-  // then injects these so each VM claims one worker assignment. When unset (e.g.
-  // a bare local run with no run created), platform reporting is skipped and the
-  // burst still runs + writes Tigris exactly as before — bench ingest is optional.
+  // then injects these so each VM claims one worker assignment. The per-shard
+  // outputs (raw/meta/metrics/log) are uploaded as worker artifacts, so when
+  // unset (a bare local run with no run created) those outputs are NOT persisted
+  // anywhere — there is no claimed worker to attach artifacts to.
   const BENCHMARK_SLUG = process.env.BENCHMARK_SLUG ?? 'scale';
   const BENCHMARK_RUN_ID = process.env.BENCHMARK_RUN_ID;
   const PARTICIPANT_SLUG = process.env.PARTICIPANT_SLUG ?? PROVIDER;
@@ -64,7 +59,6 @@ async function main() {
   log.info(`provider=${PROVIDER} (requires: ${provider.requiredEnvVars.join(', ') || 'none'})`);
   log.info(`concurrency=${provider.concurrencyTarget} timeout=${provider.perRequestTimeoutMs ?? 120_000}ms`);
   log.info(`commit_sha=${commit_sha} instance_id=${instance_id}`);
-  log.info(`tigris_prefix=${tigris_prefix}`);
   if (override) log.info(`(CONCURRENCY_TARGET overridden via env)`);
   if (shard) {
     log.info(`shard ${shard.shard_index + 1}/${shard.shard_count} of group=${shard.group_id}`);
@@ -80,19 +74,11 @@ async function main() {
   }
   log.ok(`all ${provider.requiredEnvVars.length} provider env var(s) present`);
 
-  log.phase('opening sinks');
-
-  log.info('Tigris: opening multipart upload for raw.jsonl');
-  const tigris = new TigrisSink(
-    {
-      endpoint: TIGRIS_STORAGE_ENDPOINT,
-      bucket: TIGRIS_STORAGE_BUCKET,
-      accessKeyId: TIGRIS_STORAGE_ACCESS_KEY_ID,
-      secretAccessKey: TIGRIS_STORAGE_SECRET_ACCESS_KEY,
-    },
-    RUN_ID,
-  );
-  log.ok('Tigris: sink ready');
+  // Per-sandbox raw result lines, buffered in memory and uploaded once as the
+  // raw.jsonl worker artifact at the end (the platform artifact API is a single
+  // create+PUT, not a stream). Bounded by concurrencyTarget, same magnitude as
+  // okResults/intervals already held below.
+  const rawLines: string[] = [];
 
   let lastStats: ProgressStats = { done: 0, in_flight: 0, errors: 0 };
   // Track per-success-sandbox phase timings for the analytical outputs.
@@ -112,9 +98,10 @@ async function main() {
   const createFailureClass = { timeout: 0, http_error: 0, network_error: 0 };
   const emittedSegmentCounts = { first_25pct: 0, middle_50pct: 0, last_25pct: 0 };
 
-  // Claim one platform worker for this VM. Reporting is best-effort and fully
-  // optional: a missing key/run, an unclaimable worker, or any telemetry error
-  // degrades to a Tigris-only run rather than failing the burst.
+  // Claim one platform worker for this VM. Reporting is best-effort: a missing
+  // key/run, an unclaimable worker, or any telemetry error degrades gracefully
+  // rather than failing the burst. Note: per-shard outputs are now worker
+  // artifacts, so with no claimed worker they are not persisted anywhere.
   const bench = benchApiKey && BENCHMARK_RUN_ID
     ? await BenchReporter.claim({
         apiKey: benchApiKey,
@@ -200,8 +187,8 @@ async function main() {
     return sample;
   };
   // The coordinator_metrics stream has no equivalent in the orchestrator API
-  // (no generic metric ingestion), so system health lives solely in Tigris
-  // metrics.jsonl.
+  // (no generic metric ingestion), so the full system-health series is uploaded
+  // as the metrics.jsonl artifact at the end.
   const metricsInterval = setInterval(() => {
     sampleMetrics();
   }, METRICS_SAMPLE_MS);
@@ -209,6 +196,25 @@ async function main() {
   const heartbeatInterval = setInterval(() => {
     if (bench) void bench.heartbeat(lastStats.in_flight);
   }, HEARTBEAT_MS);
+
+  // Upload the per-shard outputs as worker artifacts (replaces the old Tigris
+  // sink). Requires a claimed worker — with no platform run there is nowhere to
+  // attach artifacts, so the outputs are not persisted (artifacts-only mode).
+  // `meta` is omitted on the crash/shutdown paths where the summary isn't built.
+  const uploadArtifacts = async (meta?: Record<string, unknown>): Promise<void> => {
+    if (!bench) {
+      log.warn('artifacts-only mode: no claimed worker — per-shard outputs NOT persisted');
+      return;
+    }
+    const ndjson = (rows: ReadonlyArray<unknown>): string =>
+      rows.length ? rows.map(r => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n' : '';
+    await bench.uploadArtifact('raw-results', 'raw.jsonl', 'application/x-ndjson', ndjson(rawLines));
+    if (meta) {
+      await bench.uploadArtifact('summary', 'meta.json', 'application/json', JSON.stringify(meta, null, 2));
+    }
+    await bench.uploadArtifact('system-metrics', 'metrics.jsonl', 'application/x-ndjson', ndjson(metricsSamples));
+    await bench.uploadArtifact('log', 'coordinator.log', 'text/plain; charset=utf-8', log.dump());
+  };
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
@@ -218,10 +224,9 @@ async function main() {
     clearInterval(metricsInterval);
     clearInterval(heartbeatInterval);
     try {
-      await tigris.close();
-      if (metricsSamples.length > 0) await tigris.writeMetrics(metricsSamples);
-      await tigris.writeLog(log.dump());
-      log.ok('flushed all sinks');
+      await uploadArtifacts();
+      if (bench) await bench.finish(true);
+      log.ok('flushed artifacts');
     } catch (e: any) {
       log.error(`shutdown flush failed: ${e?.message ?? e}`);
     }
@@ -276,12 +281,12 @@ async function main() {
         // Stream the per-sandbox result to the platform as a task record. The
         // four-state status, create-failure class and submission segment ride
         // along in status/errorCode/data so getRunResults / getRunTaskResults
-        // can roll them up; Tigris raw.jsonl remains the lossless record.
+        // can roll them up; the raw.jsonl artifact remains the lossless record.
         bench?.recordResult(result, {
           submission_segment,
           failure_class: result.status === 'failed' ? result.failure_class : null,
         });
-        tigris.writeResult(result);
+        rawLines.push(JSON.stringify(result));
       },
       onProgress(stats) {
         lastStats = stats;
@@ -477,13 +482,7 @@ async function main() {
       total_cpu_system_us: metricsSamples[metricsSamples.length - 1].cpu_system_us,
     };
 
-    log.phase('flushing sinks and writing summary');
-    log.info('Tigris: closing multipart upload for raw.jsonl');
-    await tigris.close();
-    log.info('Tigris: writing metrics.jsonl');
-    await tigris.writeMetrics(metricsSamples);
-    log.info('Tigris: writing meta.json');
-    await tigris.writeMeta({
+    const meta = {
       ...final,
       latency_distribution,
       first_command_distribution,
@@ -498,7 +497,7 @@ async function main() {
       provider: PROVIDER,
       ended_at: new Date().toISOString(),
       ...(shard ? { group_id: shard.group_id, shard_index: shard.shard_index, shard_count: shard.shard_count } : {}),
-    });
+    };
 
     log.phase('run complete');
     log.info(`submission_segment emitted counts: first=${emittedSegmentCounts.first_25pct} middle=${emittedSegmentCounts.middle_50pct} last=${emittedSegmentCounts.last_25pct}`);
@@ -509,13 +508,14 @@ async function main() {
     if (final.timeouts + final.http_errors + final.network_errors > 0) {
       log.warn(`create-failure class: timeouts=${final.timeouts} http_errors=${final.http_errors} network_errors=${final.network_errors}`);
     }
-    log.phase('flushing complete');
-    // Flush any buffered task records and mark this worker complete. Per-sandbox
+    log.phase('uploading artifacts');
+    // Upload the four per-shard outputs as worker artifacts (raw/meta/metrics/log)
+    // while the attempt is still open, then mark the worker complete. Per-sandbox
     // failures are expected data, not a worker failure, so the worker is
     // "completed" whenever the burst ran end-to-end (only an outright coordinator
     // crash, handled in the catch below, fails the worker).
+    await uploadArtifacts(meta);
     if (bench) await bench.finish(false);
-    await tigris.writeLog(log.dump());
     // No explicit teardown: the coordinator is the container's PID 1, so when
     // this process exits the Namespace instance auto-reaps (see start.ts).
   } catch (err: any) {
@@ -523,10 +523,10 @@ async function main() {
     clearInterval(heartbeatInterval);
     log.error(`run failed: ${err?.message ?? err}`);
     try {
+      // Upload whatever we have (raw so far + metrics + log; no summary) as
+      // artifacts before failing the worker.
+      await uploadArtifacts();
       if (bench) await bench.finish(true);
-      await tigris.close();
-      if (metricsSamples.length > 0) await tigris.writeMetrics(metricsSamples);
-      await tigris.writeLog(log.dump());
     } catch (e: any) {
       log.error(`failed to record failure: ${e?.message ?? e}`);
     }

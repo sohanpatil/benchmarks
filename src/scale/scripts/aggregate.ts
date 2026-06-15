@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Aggregate a scale run into the meta.json shape the single-VM coordinator
- * writes, sourced from the orchestrator analytics endpoints and uploaded to
- * Tigris under groups/<runId>/.
+ * writes, sourced entirely from the orchestrator analytics endpoints
+ * (@computesdk/bench). No external storage: the report prints to stdout and,
+ * with --out, is written to a local JSON file.
  *
- * Provenance under the orchestrator API (vs. the old per-metric batch queries):
+ * Provenance (all via the bench client):
  *   - status / latency / first-command         → getRunResults (overall + steps)
  *   - failure-by-error-code                     → getRunTaskResults().failures
  *                                                 (a capped sample, not a full
@@ -14,7 +15,8 @@
  *   - run/worker/task counts + terminal status  → getRunProgress
  *
  * What the platform rollups do NOT expose, and is therefore null here (it lives
- * in each shard's Tigris meta.json / metrics.jsonl):
+ * only in each shard's per-shard artifacts — raw.jsonl/meta.json/metrics.jsonl —
+ * which the SDK cannot currently download):
  *   - the four-state taxonomy (partial / readiness_failed) — collapsed to
  *     success / error / other.
  *   - percentiles beyond min/p50/p95/p99/max (no p10/p25/p75/p90/p999).
@@ -46,7 +48,6 @@ import type {
   BenchmarkRunTimeline,
   RunProgress,
 } from '@computesdk/bench';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const BENCHMARK_SLUG = process.env.BENCHMARK_SLUG ?? 'scale';
 
@@ -56,7 +57,6 @@ interface Args {
   slug: string;
   out?: string;
   requireTerminal: boolean;
-  writeTigris: boolean;
 }
 
 function usage(): string {
@@ -69,22 +69,18 @@ function usage(): string {
     '',
     'Optional:',
     '  --slug <name>          Benchmark slug (default: scale, or BENCHMARK_SLUG)',
-    '  --out <file>           Also write the aggregate meta.json to <file>',
+    '  --out <file>           Write the aggregate meta.json to <file>',
     '  --allow-running        Aggregate even if the run is still in progress',
     '                         (default: refuse and exit 1)',
-    '  --no-tigris            Do not upload meta.json to Tigris',
     '  --help, -h             Print this help',
     '',
     'Required env:',
     '  COMPUTESDK_API_KEY    Bench API token',
-    '',
-    'Tigris env (if --no-tigris not passed):',
-    '  TIGRIS_STORAGE_ENDPOINT, _BUCKET, _ACCESS_KEY_ID, _SECRET_ACCESS_KEY',
   ].join('\n');
 }
 
 function parseArgs(): Args {
-  const out: Args = { recent: false, slug: BENCHMARK_SLUG, requireTerminal: true, writeTigris: true };
+  const out: Args = { recent: false, slug: BENCHMARK_SLUG, requireTerminal: true };
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -98,7 +94,6 @@ function parseArgs(): Args {
     else if (a === '--slug') out.slug = next();
     else if (a === '--out') out.out = next();
     else if (a === '--allow-running') out.requireTerminal = false;
-    else if (a === '--no-tigris') out.writeTigris = false;
     else if (a === '--help' || a === '-h') { console.log(usage()); process.exit(0); }
     else { console.error(`unknown arg: ${a}\n${usage()}`); process.exit(2); }
   }
@@ -255,7 +250,8 @@ const aggregate = {
   sandboxes_attempted: sandboxesAttempted,
   sandboxes_succeeded: succeeded,
   // The 4-state taxonomy collapses: partial/readiness_failed are not separable
-  // from the platform rollup (they fold into error/other). Tigris raw retains them.
+  // from the platform rollup (they fold into error/other). The per-shard raw
+  // artifacts retain them.
   partials: null,
   readiness_failures: null,
   failures: failed,
@@ -289,20 +285,6 @@ const aggregate = {
   aggregated_at: new Date().toISOString(),
 };
 
-const manifest = {
-  schema_version: 2,
-  run_id: runId,
-  benchmark_slug: args.slug,
-  provider,
-  status: progress.summary.status,
-  workers_total: aggregate.workers_total,
-  participants: participantSummaries.map(p => ({ slug: p.slug, status: p.status, total_tasks: p.total_tasks })),
-  aggregated_at: aggregate.aggregated_at,
-  tigris_run_prefix: process.env.TIGRIS_STORAGE_BUCKET
-    ? `s3://${process.env.TIGRIS_STORAGE_BUCKET}/groups/${runId}/`
-    : null,
-};
-
 // ─── pretty-print ────────────────────────────────────────────────────────
 const rule = '═'.repeat(67);
 const num = (n: number | null | undefined): string => (n == null ? '-' : Math.round(n).toLocaleString());
@@ -331,7 +313,7 @@ console.log(`  attempted:        ${sandboxesAttempted.toLocaleString()}`);
 console.log(`  succeeded:        ${num(succeeded)} (${pct(succeeded, sandboxesAttempted)})`);
 console.log('');
 console.log(`  status:           success=${num(succeeded)}  error=${num(failed)}  other=${num(other)}`);
-console.log(`                    (partial/readiness_failed not separable from rollup; see Tigris raw)`);
+console.log(`                    (partial/readiness_failed not separable from rollup; see raw artifact)`);
 
 console.log('');
 distBlock('allocate latency (ms):', aggregate.latency_distribution);
@@ -353,34 +335,15 @@ console.log('');
 console.log(`  source: status/latency from getRunResults; failure-by-code + task buckets`);
 console.log(`          from getRunTaskResults; concurrency/throughput from getRunTimeline.`);
 console.log(`          Fine percentiles, the 4-state taxonomy, create-failure class and`);
-console.log(`          fleet system-health live only in each shard's Tigris meta.json.`);
+console.log(`          fleet system-health live only in each shard's per-shard artifacts.`);
 
-// ─── local file ──────────────────────────────────────────────────────────
+// ─── output ────────────────────────────────────────────────────────────────
+// 100% bench: the report is the stdout above; --out persists the full JSON
+// locally. No external storage.
 if (args.out) {
   fs.writeFileSync(args.out, JSON.stringify(aggregate, null, 2));
   console.log('');
   console.log(`[aggregate] wrote ${args.out}`);
-}
-
-// ─── persist to Tigris (groups/<runId>/meta.json + manifest.json) ─────────
-if (args.writeTigris) {
-  const endpoint = process.env.TIGRIS_STORAGE_ENDPOINT;
-  const bucket = process.env.TIGRIS_STORAGE_BUCKET;
-  const accessKeyId = process.env.TIGRIS_STORAGE_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.TIGRIS_STORAGE_SECRET_ACCESS_KEY;
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
-    console.warn('[aggregate] Tigris env vars missing — skipping Tigris upload. ' +
-      'Set TIGRIS_STORAGE_ENDPOINT, _BUCKET, _ACCESS_KEY_ID, _SECRET_ACCESS_KEY ' +
-      'or pass --no-tigris to silence.');
-  } else {
-    const s3 = new S3Client({ endpoint, region: 'auto', credentials: { accessKeyId, secretAccessKey } });
-    const metaKey = `groups/${runId}/meta.json`;
-    const manifestKey = `groups/${runId}/manifest.json`;
-    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: metaKey, Body: JSON.stringify(aggregate, null, 2), ContentType: 'application/json' }));
-    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: manifestKey, Body: JSON.stringify(manifest, null, 2), ContentType: 'application/json' }));
-    console.log(`[aggregate] uploaded s3://${bucket}/${metaKey}`);
-    console.log(`[aggregate] uploaded s3://${bucket}/${manifestKey}`);
-  }
 }
 
 process.exit(0);
