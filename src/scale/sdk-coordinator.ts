@@ -1,7 +1,9 @@
 import { config as loadDotenv } from 'dotenv';
-import { defineStep, defineTask, defineWorker } from '@computesdk/bench';
+import { defineStep, defineTask, runBenchmarkWorker } from '@computesdk/bench';
+import type { JsonObject, TaskResultRecord, TaskStepRecord } from '@computesdk/bench';
 import { getProvider } from './providers.js';
 import { log } from './logger.js';
+import type { FailureClass, SandboxResult, SandboxResultStatus } from './types.js';
 import {
   FIRST_COMMAND_TIMEOUT_MS,
   LIVENESS_CHECK_TIMEOUT_MS,
@@ -13,7 +15,6 @@ loadDotenv();
 
 type SandboxState = {
   sandbox?: any;
-  createdAt?: string;
 };
 
 async function main() {
@@ -52,7 +53,6 @@ async function main() {
 
   const task = defineTask<SandboxState>('sandbox.lifecycle', [
     defineStep<SandboxState>('create', { reportConcurrency: false }, async ({ state, taskIndex }) => {
-      state.createdAt = new Date().toISOString();
       state.sandbox = await withTimeout(
         compute.sandbox.create(provider.sandboxOptions),
         provider.perRequestTimeoutMs ?? 120_000,
@@ -82,20 +82,21 @@ async function main() {
     }),
   ]);
 
-  const worker = defineWorker({
-    benchmarkSlug,
-    runId: BENCHMARK_RUN_ID,
-    participantSlug,
-    processKind: 'container',
-    processKey: instanceId,
-    concurrency: provider.concurrencyTarget,
-    batchSize: 500,
-    heartbeatIntervalMs: 1_000,
-    readyPollIntervalMs: 1_000,
-    task,
-  });
-
-  const result = await worker.run();
+  const result = await runBenchmarkWorker(
+    { apiKey: process.env.COMPUTESDK_API_KEY ?? process.env.COMPUTESDK_ADMIN_API_KEY },
+    {
+      benchmarkSlug,
+      runId: BENCHMARK_RUN_ID,
+      participantSlug,
+      processKind: 'container',
+      processKey: instanceId,
+      batchSize: 500,
+      heartbeatIntervalMs: 1_000,
+      readyPollIntervalMs: 1_000,
+      task,
+      onResult: normalizeTaskRecord,
+    },
+  );
   if (!result.assignment) {
     log.warn('bench: no pending worker to claim');
     process.exit(0);
@@ -106,6 +107,66 @@ async function main() {
   log.ok(`${result.records.length - errors}/${result.records.length} tasks succeeded`);
   if (errors > 0) log.warn(`${errors} task(s) failed before completing sandbox lifecycle`);
   process.exit(errors > 0 ? 1 : 0);
+}
+
+function normalizeTaskRecord(record: TaskResultRecord): void {
+  const createStep = stepByName(record, 'create');
+  const initialStep = stepByName(record, 'exec.initial');
+  const liveStep = stepByName(record, 'sandbox.live');
+  const finalStep = stepByName(record, 'exec.final');
+  const failedStep = record.steps?.find(step => step.status === 'error');
+  const lifecycleStatus = lifecycleStatusFor(failedStep?.name);
+
+  record.status = lifecycleStatus;
+  record.firstCommandMs = initialStep?.status === 'success' ? initialStep.latencyMs ?? null : null;
+  record.errorCode = failedStep?.errorCode ?? null;
+
+  const failureClass = lifecycleStatus === 'success' ? null : classifyFailure(failedStep?.errorCode);
+  const data = (record.data ?? {}) as Record<string, unknown>;
+  const sandboxResult: SandboxResult = {
+    sandbox_idx: record.taskIndex,
+    started_at: record.startedAt ?? createStep?.startedAt ?? new Date().toISOString(),
+    completed_at: record.completedAt ?? new Date().toISOString(),
+    latency_ms: createStep?.latencyMs ?? record.latencyMs ?? 0,
+    first_command_ms: record.firstCommandMs ?? null,
+    status: lifecycleStatus,
+    failure_class: failureClass,
+    http_status: null,
+    error_code: failedStep?.errorCode ?? null,
+    error_message: null,
+    provider_metadata: typeof data.sandboxId === 'string' ? { sandboxId: data.sandboxId } : null,
+  };
+
+  record.data = {
+    ...data,
+    lifecycle_status: lifecycleStatus,
+    failure_class: failureClass,
+    http_status: null,
+    error_message: null,
+    create_ms: createStep?.latencyMs ?? null,
+    first_command_ms: record.firstCommandMs,
+    live_ms: liveStep?.latencyMs ?? null,
+    final_command_ms: finalStep?.latencyMs ?? null,
+    sandbox_result: sandboxResult as unknown as JsonObject,
+  };
+}
+
+function stepByName(record: TaskResultRecord, name: string): TaskStepRecord | undefined {
+  return record.steps?.find(step => step.name === name);
+}
+
+function lifecycleStatusFor(stepName: string | undefined): SandboxResultStatus {
+  if (!stepName) return 'success';
+  if (stepName === 'create') return 'failed';
+  if (stepName === 'exec.initial') return 'readiness_failed';
+  return 'partial';
+}
+
+function classifyFailure(errorCode: string | null | undefined): FailureClass {
+  const value = (errorCode ?? '').toLowerCase();
+  if (value.includes('timeout')) return 'timeout';
+  if (value.includes('http') || value.includes('status')) return 'http_error';
+  return 'network_error';
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number, allowZero = false): number {
