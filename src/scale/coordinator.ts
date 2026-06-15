@@ -137,6 +137,7 @@ async function main() {
   const cpuBaseline = process.cpuUsage();
   const metricsStartedAt = Date.now();
   const metricsSamples: MetricsSample[] = [];
+  let liveSandboxCount: number | undefined;
 
   const readSockstat = (): Record<string, number> | null => {
     try {
@@ -194,7 +195,7 @@ async function main() {
   }, METRICS_SAMPLE_MS);
   // Platform heartbeat — progress + in-flight concurrency, surfaced via getRunTimeline.
   const heartbeatInterval = setInterval(() => {
-    if (bench) void bench.heartbeat(lastStats.in_flight);
+    if (bench) void bench.heartbeat(lastStats.in_flight, liveSandboxCount);
   }, HEARTBEAT_MS);
 
   // Upload the per-shard outputs as worker artifacts (replaces the old Tigris
@@ -256,7 +257,8 @@ async function main() {
   })();
 
   try {
-    const flow = new BurstLifecycle(provider, compute, {
+    let flow!: BurstLifecycle;
+    flow = new BurstLifecycle(provider, compute, {
       async onResult(result) {
         statusCounts[result.status]++;
         if (result.status === 'success') {
@@ -296,6 +298,7 @@ async function main() {
       },
       onProgress(stats) {
         lastStats = stats;
+        if (liveSandboxCount !== undefined) liveSandboxCount = flow.countLiveSurvivors();
         bench?.setStats(stats);
       },
     });
@@ -309,11 +312,19 @@ async function main() {
     // `runOnFailed` behaviour) and survivors are torn down regardless of phase-1
     // outcome.
     const indices = Array.from({ length: burstSize }, (_, i) => i);
-    const runStage = async (fn: (idx: number) => Promise<void>): Promise<void[]> => {
+    const refreshLiveSandboxes = (): number | undefined => {
+      if (liveSandboxCount === undefined) return undefined;
+      liveSandboxCount = flow.countLiveSurvivors();
+      return liveSandboxCount;
+    };
+    const runStage = async (
+      fn: (idx: number) => Promise<void>,
+      liveSample: (() => number | undefined) | undefined = refreshLiveSandboxes,
+    ): Promise<void[]> => {
       const promises = indices.map(fn);
-      if (bench) await bench.heartbeat(lastStats.in_flight);
+      if (bench) await bench.heartbeat(lastStats.in_flight, liveSample?.());
       const results = await Promise.all(promises);
-      if (bench) await bench.heartbeat(lastStats.in_flight);
+      if (bench) await bench.heartbeat(lastStats.in_flight, liveSample?.());
       return results;
     };
 
@@ -325,6 +336,7 @@ async function main() {
     }
 
     log.phase(`create — firing ${burstSize} requests at t=0 (no stagger)`);
+    liveSandboxCount = bench ? 0 : undefined;
     await runStage((i) => flow.createOne(i));
     await runStage((i) => flow.execInitialOne(i));
 
@@ -333,6 +345,7 @@ async function main() {
     let global_concurrency: GlobalConcurrency | null = null;
     if (bench) {
       const survivors = flow.countSurvivors();
+      liveSandboxCount = survivors;
       // Arrival barrier: report the full intended count (the default `active`),
       // NOT the live survivor count. This is a *worker*-level barrier — every
       // worker reaches this line regardless of how many of its sandboxes failed,
@@ -352,6 +365,7 @@ async function main() {
         };
         log.ok(`global concurrency at hold: ${global_concurrency.peak_concurrent}/${global_concurrency.target} ` +
           `alive across all shards (source=${global_concurrency.source})`);
+        await bench.heartbeat(lastStats.in_flight, refreshLiveSandboxes());
       } catch (err) {
         log.error('ready barrier failed — destroying surviving sandboxes before exit');
         await Promise.all(indices.map(i => flow.destroyOne(i)));
@@ -362,9 +376,12 @@ async function main() {
     if (pauseMs > 0) {
       log.phase(`pause — waiting ${pauseMs}ms`);
       await flow.pause(pauseMs);
+      if (bench) await bench.heartbeat(lastStats.in_flight, refreshLiveSandboxes());
     }
     await runStage((i) => flow.execAfterPauseOne(i));
     await runStage((i) => flow.destroyOne(i));
+    liveSandboxCount = 0;
+    if (bench) await bench.heartbeat(lastStats.in_flight, liveSandboxCount);
 
     log.phase(`create complete — ${flow.countSurvivors()}/${burstSize} sandboxes alive`);
 

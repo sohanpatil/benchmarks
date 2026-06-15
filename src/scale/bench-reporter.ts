@@ -186,7 +186,7 @@ export class BenchReporter {
   }
 
   /** Send a progress + concurrency heartbeat (best-effort). */
-  async heartbeat(activeInFlight: number): Promise<void> {
+  async heartbeat(activeInFlight: number, liveActive?: number): Promise<void> {
     // A barrier wait takes precedence: keep this worker visible at the barrier
     // step so the periodic heartbeat reinforces (rather than overwrites) the
     // sample that `waitForStepReady` is polling on.
@@ -194,7 +194,9 @@ export class BenchReporter {
     const concurrency = this.barrier
       ? { currentStep: this.barrier.step, concurrency: barrierConcurrency ?? [] }
       : activeInFlight > 0
-        ? { currentStep: 'lifecycle', concurrency: [{ step: 'lifecycle', active: activeInFlight, target: this.total }] }
+        ? { currentStep: 'lifecycle', concurrency: this.lifecycleConcurrency(activeInFlight, liveActive) }
+        : liveActive !== undefined
+          ? { concurrency: this.liveConcurrency(liveActive) }
         : { concurrency: [] };
     try {
       await this.client.heartbeatWorker(this.cfg.benchmarkSlug, this.cfg.runId, this.assignment.workerId, {
@@ -269,9 +271,22 @@ export class BenchReporter {
       { step: this.barrier.step, active: this.barrier.active, target: this.total },
     ];
     if (this.barrier.liveActive !== undefined) {
-      samples.push({ step: 'live.sandboxes', active: this.barrier.liveActive, target: this.total });
+      samples.push(...this.liveConcurrency(this.barrier.liveActive));
     }
     return samples;
+  }
+
+  private lifecycleConcurrency(activeInFlight: number, liveActive?: number): WorkerConcurrencySample[] {
+    return [
+      { step: 'lifecycle', active: activeInFlight, target: this.total },
+      ...this.liveConcurrency(liveActive),
+    ];
+  }
+
+  private liveConcurrency(liveActive?: number): WorkerConcurrencySample[] {
+    return liveActive === undefined
+      ? []
+      : [{ step: 'live.sandboxes', active: liveActive, target: this.total }];
   }
 
   /** Serialize `sendTaskResults` so sequenceNumbers stay ordered. */

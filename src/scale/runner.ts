@@ -158,6 +158,14 @@ export class BurstLifecycle {
     return this.survivors.size;
   }
 
+  countLiveSurvivors(): number {
+    let live = 0;
+    for (const pending of this.survivors.values()) {
+      if (pending.result.status !== 'partial') live++;
+    }
+    return live;
+  }
+
   private async emit(result: SandboxResult): Promise<void> {
     const { concurrencyTarget } = this.config;
     if (!result.completed_at) result.completed_at = new Date().toISOString();

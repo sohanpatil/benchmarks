@@ -225,7 +225,7 @@ if (concurrencyTimeline.length > 0) {
   };
 }
 
-// True live ready sandboxes over time, emitted at the ready hold by each worker.
+// True live ready sandboxes over time, emitted from create start through teardown.
 const liveByT = new Map<number, number>();
 for (const pt of timeline?.concurrency.points ?? []) {
   if (pt.step !== 'live.sandboxes') continue;
@@ -359,7 +359,7 @@ if (concurrencySummary) {
 }
 if (liveSandboxesSummary) {
   console.log(`  live sandboxes:   peak=${liveSandboxesSummary.peak_concurrent}  mean=${liveSandboxesSummary.mean_concurrent}  ` +
-    `(over ${(liveSandboxesSummary.total_run_ms / 1000).toFixed(0)}s, ready hold)`);
+    `(over ${(liveSandboxesSummary.total_run_ms / 1000).toFixed(0)}s, create through teardown)`);
 }
 
 console.log('');
