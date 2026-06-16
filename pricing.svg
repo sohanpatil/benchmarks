@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="726" viewBox="0 0 1200 726">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="682" viewBox="0 0 1200 682">
   <defs>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#f6f8fa;stop-opacity:1" />
@@ -30,7 +30,7 @@
   </style>
 
   <!-- Background -->
-  <rect class="bg" width="1200" height="726"/>
+  <rect class="bg" width="1200" height="682"/>
 
   <!-- Logo (black square with white C) -->
   <g transform="translate(24, 24)">
@@ -79,12 +79,12 @@
   <text class="row confidence-exact" x="920" y="252">exact</text>
   <line class="divider" x1="24" y1="266" x2="1176" y2="266"/>
 
-  <!-- namespace -->
-  <text class="row provider" x="40" y="296">Namespace</text>
-  <text class="row cost fast" x="200" y="296">$0.0600</text>
-  <text class="row" x="380" y="296">43.7 (100/100)</text>
-  <text class="row" x="580" y="296">Per-minute</text>
-  <text class="row value medium" x="740" y="296">55.3</text>
+  <!-- modal -->
+  <text class="row provider" x="40" y="296">Modal</text>
+  <text class="row cost fast" x="200" y="296">~$0.0661</text>
+  <text class="row" x="380" y="296">94.4 (100/100)</text>
+  <text class="row" x="580" y="296">Active CPU</text>
+  <text class="row value fast" x="740" y="296">79.5</text>
   <text class="row confidence-exact" x="920" y="296">exact</text>
   <line class="divider" x1="24" y1="310" x2="1176" y2="310"/>
 
@@ -133,29 +133,20 @@
   <text class="row confidence-exact" x="920" y="516">exact</text>
   <line class="divider" x1="24" y1="530" x2="1176" y2="530"/>
 
-  <!-- modal -->
-  <text class="row provider" x="40" y="560">Modal</text>
-  <text class="row cost medium" x="200" y="560">$0.1191</text>
-  <text class="row" x="380" y="560">94.4 (100/100)</text>
-  <text class="row" x="580" y="560">Per-second</text>
-  <text class="row value fast" x="740" y="560">61.8</text>
-  <text class="row confidence-exact" x="920" y="560">exact</text>
-  <line class="divider" x1="24" y1="574" x2="1176" y2="574"/>
-
   <!-- runloop -->
-  <text class="row provider" x="40" y="604">Runloop</text>
-  <text class="row cost slow" x="200" y="604">$0.1584</text>
-  <text class="row" x="380" y="604">82.3 (100/100)</text>
-  <text class="row" x="580" y="604">Per-second</text>
-  <text class="row value medium" x="740" y="604">41.4</text>
-  <text class="row confidence-exact" x="920" y="604">exact</text>
+  <text class="row provider" x="40" y="560">Runloop</text>
+  <text class="row cost slow" x="200" y="560">$0.1584</text>
+  <text class="row" x="380" y="560">82.3 (100/100)</text>
+  <text class="row" x="580" y="560">Per-second</text>
+  <text class="row value medium" x="740" y="560">41.4</text>
+  <text class="row confidence-exact" x="920" y="560">exact</text>
 
   <!-- Timestamp -->
-  <text class="timestamp" x="1176" y="688" text-anchor="end">Last updated: Mar 16, 2026</text>
+  <text class="timestamp" x="1176" y="644" text-anchor="end">Last updated: Mar 16, 2026</text>
 
   <!-- Footnotes -->
-  <text class="timestamp" x="24" y="688">Eff. Cost = effective cost for 1 vCPU + 2 GB RAM / hr. Active-CPU providers (~) estimated at 10% utilization. Value Score = sqrt(benchmark x cost efficiency).</text>
-  <text class="timestamp" x="24" y="702">Active-CPU billing (Vercel, Cloudflare): CPU charged only during execution, memory always wall-clock. Wall-clock providers: full rate shown.</text>
-  <text class="timestamp" x="24" y="716">Confidence: exact = official pricing page, estimated = back-calculated from bundled tier.</text>
+  <text class="timestamp" x="24" y="644">Eff. Cost = effective cost for 1 vCPU + 2 GB RAM / hr. Active-CPU providers (~) estimated at 10% utilization. Value Score = sqrt(benchmark x cost efficiency).</text>
+  <text class="timestamp" x="24" y="658">Active-CPU billing (Vercel, Cloudflare): CPU charged only during execution, memory always wall-clock. Wall-clock providers: full rate shown.</text>
+  <text class="timestamp" x="24" y="672">Confidence: exact = official pricing page, estimated = back-calculated from bundled tier.</text>
 
 </svg>

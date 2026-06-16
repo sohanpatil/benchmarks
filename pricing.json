@@ -155,7 +155,7 @@
         "cold_start_ms": 2000
       },
       "pricing": {
-        "model": "per_second",
+        "model": "active_cpu",
         "cpu": {
           "rate": 3.942e-05,
           "unit": "core-sec",
@@ -186,8 +186,9 @@
           "cpu_per_vcpu_hr": 0.07096,
           "memory_per_gib_hr": 0.02419,
           "total_1vcpu_2gb_hr": 0.11914,
+          "effective_cost_1vcpu_2gb_hr": 0.0661,
           "confidence": "exact",
-          "notes": "$0.00003942/core-sec / 2 vCPU x 3600s for CPU. Sandbox non-preemptible rate."
+          "notes": "$0.00003942/core-sec / 2 vCPU x 3600s for CPU. Sandbox non-preemptible rate. Modal bills per-second but is compared as active-CPU at 10% utilization; effective cost respects Modal's 0.125 physical-core (0.25 vCPU) minimum: 0.07096*0.25 + 0.02419*2 = 0.0661."
         }
       },
       "plans": [
@@ -222,84 +223,6 @@
       "free_credits": 30,
       "isolation": "gvisor",
       "notes": "GPU support available. Regional multipliers (1.25x-2.5x) and non-preemptible multiplier (3x) compound. Startup credits up to $25K for eligible startups."
-    },
-    {
-      "id": "namespace",
-      "benchmark": {
-        "score": 43.7,
-        "success_rate": "100/100",
-        "status": "ok",
-        "cold_start_ms": null
-      },
-      "pricing": {
-        "model": "per_minute",
-        "cpu": {
-          "prepaid_rate": 0.001,
-          "overage_rate": 0.0015,
-          "unit": "unit-min",
-          "notes": "1 unit = 1 vCPU x 1 min (Linux). Windows 2x multiplier, macOS 10x multiplier.",
-          "confidence": "exact"
-        },
-        "memory": {
-          "rate": null,
-          "unit": null,
-          "bundled_with_cpu": true,
-          "confidence": "exact",
-          "notes": "Standard shape: 1 vCPU + 2 GB RAM per unit-min. Memory not separately billed."
-        },
-        "storage": {
-          "cache_volume_rate": 0.0048,
-          "cache_volume_unit": "GB-day",
-          "cache_snapshot_rate": 0.002,
-          "cache_snapshot_unit": "GB-hr",
-          "container_registry_rate": 0.2,
-          "container_registry_unit": "GB-month",
-          "confidence": "exact"
-        },
-        "egress": {
-          "rate": null,
-          "free_gb_per_month": null,
-          "confidence": "unknown",
-          "notes": "Not published. Likely included."
-        },
-        "normalized": {
-          "cpu_per_vcpu_hr": 0.06,
-          "memory_per_gib_hr": 0.02,
-          "total_1vcpu_2gb_hr": 0.06,
-          "confidence": "exact",
-          "notes": "Prepaid rate: $0.001/unit-min x 60 min. CPU+memory bundled so total = CPU rate."
-        }
-      },
-      "plans": [
-        {
-          "name": "developer",
-          "base_fee_per_month": 0,
-          "unit_minutes_included": null,
-          "docker_builds_included": null,
-          "billing": "pay_as_you_go"
-        },
-        {
-          "name": "team",
-          "base_fee_per_month": 100,
-          "unit_minutes_included": 100000,
-          "docker_builds_included": 1000
-        },
-        {
-          "name": "business",
-          "base_fee_per_month": 250,
-          "unit_minutes_included": 250000,
-          "docker_builds_included": 2500
-        },
-        {
-          "name": "enterprise",
-          "base_fee_per_month": null,
-          "unit_minutes_included": null,
-          "docker_builds_included": null
-        }
-      ],
-      "free_credits": null,
-      "isolation": "vm",
-      "notes": "Primarily a CI/CD runner platform, not a pure AI sandbox. macOS on Apple M4 Pro available. SOC2 Type II."
     },
     {
       "id": "vercel",
