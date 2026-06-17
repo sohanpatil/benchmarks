@@ -148,7 +148,7 @@ async function main() {
     defineStep<SandboxState>('worker.ready', {
       reportConcurrency: true,
       readiness: 'poll',
-      readyPollIntervalMs: 250,
+      readyPollIntervalMs: 1_000,
       readyTimeoutMs: barrierTimeoutMs,
     }, async () => {
       if (!workerReadyReleased) {
@@ -200,7 +200,7 @@ async function main() {
     defineStep<SandboxState>('sandbox.live', {
       reportConcurrency: true,
       readiness: 'poll',
-      readyPollIntervalMs: 250,
+      readyPollIntervalMs: 1_000,
       readyTimeoutMs: barrierTimeoutMs,
     }, async () => {
       if (!liveBarrierReleased) {
@@ -236,8 +236,8 @@ async function main() {
       processKind: 'container',
       processKey: instanceId,
       batchSize: 500,
-      heartbeatIntervalMs: 1_000,
-      readyPollIntervalMs: 250,
+      heartbeatIntervalMs: 2_000,
+      readyPollIntervalMs: 1_000,
       task,
       onResult: (record) => {
         const normalized = normalizeTaskRecord(record);
