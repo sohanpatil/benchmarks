@@ -225,8 +225,8 @@ const timelineForStep = (stepName: string): Array<{ t_ms: number; active: number
     .map(([t_ms, active]) => ({ t_ms, active }));
 };
 
-// Worker readiness is a pre-create barrier. Keep it separate so barrier wait is
-// not mistaken for provider create/runtime concurrency.
+// Worker readiness used to be a pre-create barrier; keep historical points
+// separate so they are not mistaken for provider create/runtime concurrency.
 const workerReadyTimeline = timelineForStep('worker.ready');
 const workerReadySummary = summarizeTimeline(workerReadyTimeline);
 
@@ -361,7 +361,7 @@ if (concurrencySummary) {
 if (workerReadySummary) {
   console.log('');
   console.log(`  worker ready:     peak=${workerReadySummary.peak_concurrent}  mean=${workerReadySummary.mean_concurrent}  ` +
-    `(over ${(workerReadySummary.total_run_ms / 1000).toFixed(0)}s, pre-create barrier)`);
+    `(over ${(workerReadySummary.total_run_ms / 1000).toFixed(0)}s, pre-create readiness)`);
 }
 if (liveSandboxesSummary) {
   console.log(`  live sandboxes:   peak=${liveSandboxesSummary.peak_concurrent}  mean=${liveSandboxesSummary.mean_concurrent}  ` +

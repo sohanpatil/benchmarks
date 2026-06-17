@@ -45,13 +45,12 @@ async function main() {
   const override = process.env.CONCURRENCY_TARGET;
   if (override) provider.concurrencyTarget = parseInt(override, 10);
 
-  const liveHoldMs = parsePositiveInt(process.env.LIFECYCLE_PAUSE_MS, 30_000, true);
-  const barrierTimeoutMs = parsePositiveInt(process.env.SCALE_BARRIER_TIMEOUT_MS, 15 * 60_000);
+  const liveHoldMs = parsePositiveInt(process.env.LIFECYCLE_PAUSE_MS, 90_000, true);
 
   log.phase('scale sdk coordinator starting');
   log.info(`provider=${PROVIDER} (requires: ${provider.requiredEnvVars.join(', ') || 'none'})`);
   log.info(`concurrency=${provider.concurrencyTarget} timeout=${provider.perRequestTimeoutMs ?? 120_000}ms`);
-  log.info(`live_hold_ms=${liveHoldMs} barrier_timeout_ms=${barrierTimeoutMs}`);
+  log.info(`live_hold_ms=${liveHoldMs}`);
   log.info(`commit_sha=${commitSha} instance_id=${instanceId}`);
 
   log.phase('validating environment');
@@ -93,7 +92,7 @@ async function main() {
   let nextCreateProgressAt = Math.max(1, Math.ceil(provider.concurrencyTarget / 10));
   let workerReadyReleased = false;
   let createStarted = false;
-  let liveBarrierReleased = false;
+  let liveHoldStarted = false;
   let liveHoldFinished = false;
 
   const logProgress = (result: SandboxResult): void => {
@@ -145,15 +144,10 @@ async function main() {
   };
 
   const task = defineTask<SandboxState>('sandbox.lifecycle', [
-    defineStep<SandboxState>('worker.ready', {
-      reportConcurrency: true,
-      readiness: 'poll',
-      readyPollIntervalMs: 1_000,
-      readyTimeoutMs: barrierTimeoutMs,
-    }, async () => {
+    defineStep<SandboxState>('worker.ready', { reportConcurrency: false }, async () => {
       if (!workerReadyReleased) {
         workerReadyReleased = true;
-        log.ok(`worker.ready barrier released after ${formatDuration(Date.now() - runStartedAt)}; create phase starting`);
+        log.ok(`worker.ready reached after ${formatDuration(Date.now() - runStartedAt)}; create phase starting`);
       }
     }),
 
@@ -197,15 +191,10 @@ async function main() {
       await withTimeout(state.sandbox.runCommand('node -v'), FIRST_COMMAND_TIMEOUT_MS);
     }),
 
-    defineStep<SandboxState>('sandbox.live', {
-      reportConcurrency: true,
-      readiness: 'poll',
-      readyPollIntervalMs: 1_000,
-      readyTimeoutMs: barrierTimeoutMs,
-    }, async () => {
-      if (!liveBarrierReleased) {
-        liveBarrierReleased = true;
-        log.ok(`sandbox.live barrier released after ${formatDuration(Date.now() - runStartedAt)}; holding live sandboxes for ${formatDuration(liveHoldMs)}`);
+    defineStep<SandboxState>('sandbox.live', { reportConcurrency: false }, async () => {
+      if (!liveHoldStarted) {
+        liveHoldStarted = true;
+        log.ok(`sandbox.live hold started after ${formatDuration(Date.now() - runStartedAt)}; holding live sandboxes for ${formatDuration(liveHoldMs)}`);
       }
       if (liveHoldMs > 0) await new Promise(resolve => setTimeout(resolve, liveHoldMs));
       if (!liveHoldFinished) {
@@ -225,7 +214,7 @@ async function main() {
 
   log.phase('claiming benchmark worker');
   log.info(`benchmark=${benchmarkSlug} run=${BENCHMARK_RUN_ID} participant=${participantSlug} process_key=${instanceId}`);
-  log.info(`worker.ready barrier enabled; create starts after participant reaches target concurrency`);
+  log.info(`worker.ready concurrency reporting disabled; create starts as each task reaches worker.ready`);
 
   const result = await runBenchmarkWorker(
     { apiKey: process.env.COMPUTESDK_API_KEY ?? process.env.COMPUTESDK_ADMIN_API_KEY },
@@ -237,7 +226,6 @@ async function main() {
       processKey: instanceId,
       batchSize: 500,
       heartbeatIntervalMs: 2_000,
-      readyPollIntervalMs: 1_000,
       task,
       onResult: (record) => {
         const normalized = normalizeTaskRecord(record);

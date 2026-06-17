@@ -18,7 +18,7 @@ export interface BurstProviderConfig extends ProviderConfig {
  *   readiness_failed  — created, but the first `node -v` after create failed
  *                       so the sandbox never became usable. Destroyed early.
  *   failed            — `sandbox.create()` itself errored.
- *   worker_ready_failed — the pre-create worker readiness barrier failed before
+ *   worker_ready_failed — the pre-create worker readiness step failed before
  *                       `sandbox.create()` was attempted.
  */
 export type SandboxResultStatus = 'success' | 'partial' | 'readiness_failed' | 'failed' | 'worker_ready_failed';
@@ -26,7 +26,7 @@ export type SandboxResultStatus = 'success' | 'partial' | 'readiness_failed' | '
 /**
  * Sub-classification of the underlying error for any non-success status.
  * For `failed`, describes how create errored. For `worker_ready_failed`,
- * describes how the readiness barrier errored. For `readiness_failed` and
+ * describes how the readiness step errored. For `readiness_failed` and
  * `partial`, describes how the `node -v` probe errored.
  */
 export type FailureClass = 'timeout' | 'http_error' | 'network_error';
