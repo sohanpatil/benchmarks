@@ -1,6 +1,7 @@
 // import { daytona } from '@computesdk/daytona';
 import { declaw } from '@computesdk/declaw';
 import { e2b } from '@computesdk/e2b';
+import { isorun } from '@computesdk/isorun';
 import { modal } from '@computesdk/modal';
 import { northflank } from '@computesdk/northflank';
 import { runloop } from '@computesdk/runloop';
@@ -74,6 +75,14 @@ export const providers: BurstProviderConfig[] = [
     name: 'declaw',
     requiredEnvVars: ['DECLAW_API_KEY'],
     createCompute: () => declaw({ apiKey: process.env.DECLAW_API_KEY! }),
+    concurrencyTarget: 100_000,
+    perRequestTimeoutMs: 120_000,
+    sandboxOptions: { timeout: KEEP_ALIVE_MS },
+  },
+  {
+    name: 'isorun',
+    requiredEnvVars: ['ISORUN_API_KEY'],
+    createCompute: () => isorun({ apiKey: process.env.ISORUN_API_KEY! }),
     concurrencyTarget: 100_000,
     perRequestTimeoutMs: 120_000,
     sandboxOptions: { timeout: KEEP_ALIVE_MS },

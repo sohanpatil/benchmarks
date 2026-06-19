@@ -74,6 +74,7 @@
     "@computesdk/e2b": "^1.7.50",
     "@computesdk/hopx": "^0.2.18",
     "@computesdk/hyperbrowser": "^0.2.0",
+    "@computesdk/isorun": "^0.1.0",
     "@computesdk/just-bash": "^0.4.6",
     "@computesdk/kernel": "^0.2.1",
     "@computesdk/modal": "^1.9.1",
