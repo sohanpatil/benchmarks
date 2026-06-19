@@ -2,20 +2,22 @@ import { archil } from '@computesdk/archil';
 import { beam } from '@computesdk/beam';
 import { blaxel } from '@computesdk/blaxel';
 import { codesandbox } from '@computesdk/codesandbox';
+// import { collimate } from '@computesdk/collimate';
 import { cloudflare } from '@computesdk/cloudflare';
 import { daytona } from '@computesdk/daytona';
 import { declaw } from '@computesdk/declaw';
 import { e2b } from '@computesdk/e2b';
 import { hopx } from '@computesdk/hopx';
+import { isorun } from '@computesdk/isorun';
 import { modal } from '@computesdk/modal';
-import { namespace } from '@computesdk/namespace';
+// import { namespace } from '@computesdk/namespace';
 import { northflank } from '@computesdk/northflank';
+// import { railway } from '@computesdk/railway';
 import { runloop } from '@computesdk/runloop';
 import { sprites } from '@computesdk/sprites';
 import { tensorlake } from '@computesdk/tensorlake'
 import { upstash } from '@computesdk/upstash';
 import { vercel } from '@computesdk/vercel';
-import { compute } from 'computesdk';
 import type { ProviderConfig } from './types.js';
 
 /**
@@ -54,6 +56,11 @@ export const providers: ProviderConfig[] = [
     createCompute: () => codesandbox({ apiKey: process.env.CSB_API_KEY! }),
     destroyTimeoutMs: 1_000,
   },
+  // {
+  //   name: 'collimate',
+  //   requiredEnvVars: ['COLLIMATE_API_KEY'],
+  //   createCompute: () => collimate({ apiKey: process.env.COLLIMATE_API_KEY! }),
+  // },
   {
     name: 'daytona',
     requiredEnvVars: ['DAYTONA_API_KEY'],
@@ -76,16 +83,22 @@ export const providers: ProviderConfig[] = [
     createCompute: () => hopx({ apiKey: process.env.HOPX_API_KEY! }),
   },
   {
+    name: 'isorun',
+    requiredEnvVars: ['ISORUN_API_KEY'],
+    createCompute: () => isorun({ apiKey: process.env.ISORUN_API_KEY! }),
+    sandboxOptions: { image: 'node:22' },
+  },
+  {
     name: 'modal',
     requiredEnvVars: ['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'],
     createCompute: () => modal({ tokenId: process.env.MODAL_TOKEN_ID!, tokenSecret: process.env.MODAL_TOKEN_SECRET!, scalableSandboxes: true }),
   },
-  {
-    name: 'namespace',
-    requiredEnvVars: ['NSC_TOKEN'],
-    createCompute: () => namespace({ token: process.env.NSC_TOKEN! }),
-    sandboxOptions: { image: 'node:22' },
-  },
+  // {
+  //   name: 'namespace',
+  //   requiredEnvVars: ['NSC_TOKEN'],
+  //   createCompute: () => namespace({ token: process.env.NSC_TOKEN! }),
+  //   sandboxOptions: { image: 'node:22' },
+  // },
   {
     name: 'northflank',
     requiredEnvVars: ['NORTHFLANK_TOKEN', 'NORTHFLANK_PROJECT_ID'],
@@ -95,6 +108,11 @@ export const providers: ProviderConfig[] = [
       runtime: 'node',
     }),
   },
+  // {
+  //   name: 'railway',
+  //   requiredEnvVars: ['RAILWAY_API_TOKEN', 'RAILWAY_ENVIRONMENT_ID'],
+  //   createCompute: () => railway({ token: process.env.RAILWAY_API_TOKEN!, environmentId: process.env.RAILWAY_ENVIRONMENT_ID! }),
+  // },
   {
     name: 'runloop',
     requiredEnvVars: ['RUNLOOP_API_KEY'],
@@ -121,30 +139,4 @@ export const providers: ProviderConfig[] = [
     requiredEnvVars: ['VERCEL_TOKEN', 'VERCEL_TEAM_ID', 'VERCEL_PROJECT_ID'],
     createCompute: () => vercel({ token: process.env.VERCEL_TOKEN!, teamId: process.env.VERCEL_TEAM_ID!, projectId: process.env.VERCEL_PROJECT_ID! }),
   },
-  //
-  // --- Automatic mode (via ComputeSDK gateway) ---
-  // {
-  //   name: 'railway',
-  //   requiredEnvVars: ['COMPUTESDK_API_KEY', 'RAILWAY_API_KEY', 'RAILWAY_PROJECT_ID', 'RAILWAY_ENVIRONMENT_ID'],
-  //   createCompute: () => {
-  //     compute.setConfig({
-  //       provider: 'railway',
-  //       computesdkApiKey: process.env.COMPUTESDK_API_KEY!,
-  //       railway: { apiToken: process.env.RAILWAY_API_KEY!, projectId: process.env.RAILWAY_PROJECT_ID!, environmentId: process.env.RAILWAY_ENVIRONMENT_ID! },
-  //     } as any);
-  //     return compute;
-  //   },
-  // },
-  // {
-  //   name: 'render',
-  //   requiredEnvVars: ['COMPUTESDK_API_KEY', 'RENDER_API_KEY', 'RENDER_OWNER_ID'],
-  //   createCompute: () => {
-  //     compute.setConfig({
-  //       provider: 'render',
-  //       computesdkApiKey: process.env.COMPUTESDK_API_KEY!,
-  //       render: { apiKey: process.env.RENDER_API_KEY!, ownerId: process.env.RENDER_OWNER_ID! },
-  //     } as any);
-  //     return compute;
-  //   },
-  // },
 ];
