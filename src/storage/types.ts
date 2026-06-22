@@ -1,3 +1,5 @@
+import type { Storage } from '@storagesdk/core';
+
 export interface StorageProviderConfig {
   /** Provider name */
   name: string;
@@ -9,8 +11,8 @@ export interface StorageProviderConfig {
   concurrency?: number;
   /** Environment variables that must all be set to run this benchmark */
   requiredEnvVars: string[];
-  /** Creates a storage instance */
-  createStorage: () => any;
+  /** Creates a StorageSDK storage instance (bucket configured on the adapter) */
+  createStorage: () => Storage;
   /** Bucket name for testing */
   bucket: string;
   /** Test file sizes in bytes */
