@@ -3,6 +3,7 @@ import { s3 } from '@storagesdk/adapters/s3';
 import { r2 } from '@storagesdk/adapters/r2';
 import { tigris } from '@storagesdk/adapters/tigris';
 import { vercel } from '@storagesdk/adapters/vercel';
+import { gcs } from '@storagesdk/adapters/gcs';
 import type { StorageProviderConfig } from './types.js';
 
 /**
@@ -65,6 +66,23 @@ export const storageProviders: StorageProviderConfig[] = [
         bucket: process.env.VERCEL_BLOB_BUCKET || 'benchmarks',
         token: process.env.BLOB_READ_WRITE_TOKEN!,
         access: 'private',
+      }),
+    }),
+    fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
+  },
+  {
+    name: 'gcs',
+    requiredEnvVars: ['GCS_PROJECT_ID', 'GCS_BUCKET', 'GCS_CLIENT_EMAIL', 'GCS_PRIVATE_KEY'],
+    bucket: process.env.GCS_BUCKET!,
+    createStorage: () => new Storage({
+      adapter: gcs({
+        bucket: process.env.GCS_BUCKET!,
+        projectId: process.env.GCS_PROJECT_ID!,
+        credentials: {
+          client_email: process.env.GCS_CLIENT_EMAIL!,
+          // Secrets store the key with literal "\n"; restore real newlines.
+          private_key: process.env.GCS_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+        },
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],

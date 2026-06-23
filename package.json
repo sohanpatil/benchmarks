@@ -95,6 +95,7 @@
     "@computesdk/tensorlake": "^0.1.8",
     "@computesdk/upstash": "^0.3.0",
     "@computesdk/vercel": "^1.7.22",
+    "@google-cloud/storage": "^7.21.0",
     "@storagesdk/adapters": "^0.7.1",
     "@storagesdk/core": "^0.4.2",
     "@tigrisdata/storage": "^3.12.0",
