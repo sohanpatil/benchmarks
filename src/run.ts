@@ -9,23 +9,28 @@ import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import { runBrowserBenchmark, writeBrowserResultsJson } from './browser/benchmark.js';
+import { runThroughputBenchmark, writeThroughputResultsJson } from './browser/throughput-benchmark.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
 import { providers } from './sandbox/providers.js';
 import { storageProviders } from './storage/providers.js';
 import { browserProviders } from './browser/providers.js';
+import { throughputProviders } from './browser/throughput-providers.js';
 import { computeCompositeScores } from './sandbox/scoring.js';
 import { computeStorageCompositeScores } from './storage/scoring.js';
 import { computeBrowserCompositeScores } from './browser/scoring.js';
+import { computeThroughputCompositeScores } from './browser/throughput-scoring.js';
 import type { BenchmarkResult, BenchmarkMode } from './sandbox/types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
+import type { ThroughputBenchmarkResult } from './browser/throughput-types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Parse CLI args
 const args = process.argv.slice(2);
 const providerFilter = getArgValue(args, '--provider');
-const iterations = parseInt(getArgValue(args, '--iterations') || '100', 10);
+const iterationsArg = getArgValue(args, '--iterations');
+const iterations = parseInt(iterationsArg || '100', 10);
 const rawMode = getArgValue(args, '--mode');
 const concurrency = parseInt(getArgValue(args, '--concurrency') || '100', 10);
 const storageConcurrency = parseInt(getArgValue(args, '--storage-concurrency') || '1', 10);
@@ -38,22 +43,24 @@ function getArgValue(args: string[], flag: string): string | undefined {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] {
+function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['browser-throughput'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'browser') return ['browser'];
+  if (rawMode === 'browser-throughput') return ['browser-throughput'];
   const m = rawMode === 'concurrent' ? 'burst' : rawMode as BenchmarkMode;
   return [m];
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: BenchmarkMode | 'storage'): string {
+function modeToDir(m: BenchmarkMode | 'storage' | 'browser-throughput'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
     case 'burst':
     case 'concurrent': return 'burst_tti';
     case 'storage': return 'storage';
+    case 'browser-throughput': return 'browser-throughput';
     default: return `${m}_tti`;
   }
 }
@@ -210,7 +217,67 @@ async function runBrowser(toRun: typeof browserProviders): Promise<void> {
   fs.mkdirSync(resultsDir, { recursive: true });
 
   const outPath = path.join(resultsDir, `${timestamp}.json`);
-  await writeBrowserResultsJson(results, outPath);
+  const timeoutMs = toRun.reduce((max, p) => Math.max(max, p.timeout ?? 120_000), 0) || 120_000;
+  await writeBrowserResultsJson(results, outPath, { timeoutMs });
+
+  // Copy results to latest.json
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
+async function runBrowserThroughput(toRun: typeof throughputProviders): Promise<void> {
+  // Throughput sessions are ~12s each, so we use a much lower default than
+  // the global iterations CLI value. Only override when --iterations was
+  // explicitly passed; otherwise let runThroughputBenchmark apply its own
+  // default (10 sessions per provider).
+  const throughputIterations = iterationsArg ? iterations : undefined;
+
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: BROWSER THROUGHPUT');
+  console.log(`  Iterations per provider: ${throughputIterations ?? 10}`);
+  console.log('='.repeat(70));
+
+  const results: ThroughputBenchmarkResult[] = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runThroughputBenchmark(
+      throughputIterations !== undefined
+        ? { ...providerConfig, iterations: throughputIterations }
+        : providerConfig,
+    );
+    results.push(result);
+  }
+
+  // Compute composite scores
+  computeThroughputCompositeScores(results);
+
+  // Print summary
+  console.log('\n--- Browser Throughput Benchmark Results ---');
+  for (const r of results) {
+    if (r.skipped) {
+      console.log(`${r.provider}: SKIPPED (${r.skipReason})`);
+      continue;
+    }
+    const expectedActions = 50;
+    const fullSuccess = r.iterations.filter(i => !i.error && i.actionsCompleted === expectedActions).length;
+    const total = r.iterations.length;
+    const aps = r.summary.actionsPerSecond.median;
+    const taskMed = r.summary.taskMs.median;
+    const screenshotMed = r.summary.perActionType.screenshot?.median ?? 0;
+    console.log(`${r.provider}:`);
+    console.log(`  APS: ${aps.toFixed(2)}/s (median) — task ${(taskMed / 1000).toFixed(2)}s, screenshot ${Math.round(screenshotMed)}ms`);
+    console.log(`  Score: ${r.compositeScore?.toFixed(1) || '--'} (${fullSuccess}/${total} OK)`);
+  }
+
+  // Write JSON results to browser-throughput subdirectory
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const resultsDir = path.resolve(__dirname, '../results/browser-throughput');
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  const timeoutMs = toRun.reduce((max, p) => Math.max(max, p.timeout ?? 120_000), 0) || 120_000;
+  await writeThroughputResultsJson(results, outPath, { timeoutMs });
 
   // Copy results to latest.json
   const latestPath = path.join(resultsDir, 'latest.json');
@@ -220,6 +287,30 @@ async function runBrowser(toRun: typeof browserProviders): Promise<void> {
 
 async function main() {
   const modes = getModesToRun();
+
+  // Handle browser-throughput mode separately
+  if (modes[0] === 'browser-throughput') {
+    console.log('ComputeSDK Browser Throughput Benchmarks');
+    console.log(`Date: ${new Date().toISOString()}\n`);
+
+    const toRun = providerFilter
+      ? throughputProviders.filter(p => p.name === providerFilter)
+      : throughputProviders;
+
+    if (toRun.length === 0) {
+      if (providerFilter) {
+        console.error(`Unknown browser-throughput provider: ${providerFilter}`);
+        console.error(`Available: ${throughputProviders.map(p => p.name).join(', ')}`);
+      } else {
+        console.error('No browser-throughput providers configured. Add entries to src/browser/throughput-providers.ts.');
+      }
+      process.exit(1);
+    }
+
+    await runBrowserThroughput(toRun);
+    console.log('\nAll browser-throughput tests complete.');
+    return;
+  }
 
   // Handle browser mode separately
   if (modes[0] === 'browser') {

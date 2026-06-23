@@ -32,6 +32,11 @@
     "bench:browser:steel": "tsx src/run.ts --mode browser --provider steel",
     "bench:browser:browseruse": "tsx src/run.ts --mode browser --provider browseruse",
     "bench:browser:anchorbrowser": "tsx src/run.ts --mode browser --provider anchorbrowser",
+    "bench:browser-throughput": "tsx src/run.ts --mode browser-throughput",
+    "bench:browser-throughput:browserbase": "tsx src/run.ts --mode browser-throughput --provider browserbase",
+    "bench:browser-throughput:hyperbrowser": "tsx src/run.ts --mode browser-throughput --provider hyperbrowser",
+    "bench:browser-throughput:kernel": "tsx src/run.ts --mode browser-throughput --provider kernel",
+    "bench:browser-throughput:steel": "tsx src/run.ts --mode browser-throughput --provider steel",
     "bench:storage": "tsx src/run.ts --mode storage",
     "bench:storage:s3": "tsx src/run.ts --mode storage --provider aws-s3",
     "bench:storage:r2": "tsx src/run.ts --mode storage --provider cloudflare-r2",
@@ -59,6 +64,7 @@
     "generate-svg:burst": "tsx src/sandbox/generate-svg.ts --mode burst",
     "generate-storage-svg": "tsx src/storage/generate-svg.ts",
     "generate-browser-svg": "tsx src/browser/generate-svg.ts",
+    "generate-browser-throughput-svg": "tsx src/browser/generate-throughput-svg.ts",
     "generate-pricing-svg": "tsx src/sandbox/generate-pricing-svg.ts"
   },
   "dependencies": {

@@ -163,7 +163,11 @@ function roundStats(s: { median: number; p95: number; p99: number }) {
   return { median: round(s.median), p95: round(s.p95), p99: round(s.p99) };
 }
 
-export async function writeBrowserResultsJson(results: BrowserBenchmarkResult[], outPath: string): Promise<void> {
+export async function writeBrowserResultsJson(
+  results: BrowserBenchmarkResult[],
+  outPath: string,
+  options: { timeoutMs?: number } = {},
+): Promise<void> {
   const fs = await import('fs');
   const os = await import('os');
 
@@ -190,6 +194,10 @@ export async function writeBrowserResultsJson(results: BrowserBenchmarkResult[],
     ...(r.skipped ? { skipped: r.skipped, skipReason: r.skipReason } : {}),
   }));
 
+  // Derive iteration count from the largest run across providers, so a
+  // skipped first provider doesn't make the header read 0.
+  const iterations = results.reduce((max, r) => Math.max(max, r.iterations.length), 0);
+
   const output = {
     version: '1.0',
     timestamp: new Date().toISOString(),
@@ -199,8 +207,8 @@ export async function writeBrowserResultsJson(results: BrowserBenchmarkResult[],
       arch: os.arch(),
     },
     config: {
-      iterations: results[0]?.iterations.length || 0,
-      timeoutMs: 120000,
+      iterations,
+      timeoutMs: options.timeoutMs ?? 120_000,
     },
     results: cleanResults,
   };
