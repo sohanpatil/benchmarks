@@ -66,7 +66,7 @@ export const storageProviders: StorageProviderConfig[] = [
       adapter: vercel({
         bucket: process.env.VERCEL_BLOB_BUCKET || 'benchmarks',
         token: process.env.BLOB_READ_WRITE_TOKEN!,
-        access: 'public',
+        access: 'private',
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
