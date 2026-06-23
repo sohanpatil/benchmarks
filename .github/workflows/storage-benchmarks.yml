@@ -54,6 +54,7 @@ jobs:
           - tigris
           - vercel-blob
           - gcs
+          - azure-blob
         file_size: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.file_size != '' && fromJson(format('["{0}"]', github.event.inputs.file_size))) || fromJson('["1MB","4MB","10MB","16MB"]') }}
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +90,9 @@ jobs:
           GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
           GCS_CLIENT_EMAIL: ${{ secrets.GCS_CLIENT_EMAIL }}
           GCS_PRIVATE_KEY: ${{ secrets.GCS_PRIVATE_KEY }}
+          AZURE_ACCOUNT_NAME: ${{ secrets.AZURE_ACCOUNT_NAME }}
+          AZURE_ACCOUNT_KEY: ${{ secrets.AZURE_ACCOUNT_KEY }}
+          AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
         run: |
           FILE_SIZE="${{ matrix.file_size }}"
           npm run bench -- \
@@ -183,7 +187,7 @@ jobs:
               body += '|---|----------|-------|----------|------------|--------|--------|\n';
 
               results.forEach((r, i) => {
-                const name = r.provider === 'aws-s3' ? 'AWS S3' : r.provider === 'cloudflare-r2' ? 'Cloudflare R2' : r.provider === 'vercel-blob' ? 'Vercel Blob' : r.provider === 'gcs' ? 'Google Cloud Storage' : r.provider.charAt(0).toUpperCase() + r.provider.slice(1);
+                const name = r.provider === 'aws-s3' ? 'AWS S3' : r.provider === 'cloudflare-r2' ? 'Cloudflare R2' : r.provider === 'vercel-blob' ? 'Vercel Blob' : r.provider === 'gcs' ? 'Google Cloud Storage' : r.provider === 'azure-blob' ? 'Azure Blob Storage' : r.provider.charAt(0).toUpperCase() + r.provider.slice(1);
                 const score = r.compositeScore !== undefined ? r.compositeScore.toFixed(1) : '--';
                 const dl = (r.summary.downloadMs.median / 1000).toFixed(2) + 's';
                 const tp = r.summary.throughputMbps.median.toFixed(1) + ' Mbps';

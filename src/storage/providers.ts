@@ -4,6 +4,7 @@ import { r2 } from '@storagesdk/adapters/r2';
 import { tigris } from '@storagesdk/adapters/tigris';
 import { vercel } from '@storagesdk/adapters/vercel';
 import { gcs } from '@storagesdk/adapters/gcs';
+import { azure } from '@storagesdk/adapters/azure';
 import type { StorageProviderConfig } from './types.js';
 
 /**
@@ -83,6 +84,19 @@ export const storageProviders: StorageProviderConfig[] = [
           // Secrets store the key with literal "\n"; restore real newlines.
           private_key: process.env.GCS_PRIVATE_KEY!.replace(/\\n/g, '\n'),
         },
+      }),
+    }),
+    fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
+  },
+  {
+    name: 'azure-blob',
+    requiredEnvVars: ['AZURE_ACCOUNT_NAME', 'AZURE_ACCOUNT_KEY', 'AZURE_CONTAINER'],
+    bucket: process.env.AZURE_CONTAINER!,
+    createStorage: () => new Storage({
+      adapter: azure({
+        bucket: process.env.AZURE_CONTAINER!,
+        accountName: process.env.AZURE_ACCOUNT_NAME!,
+        accountKey: process.env.AZURE_ACCOUNT_KEY!,
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
