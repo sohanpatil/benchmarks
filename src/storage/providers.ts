@@ -2,6 +2,7 @@ import { Storage } from '@storagesdk/core';
 import { s3 } from '@storagesdk/adapters/s3';
 import { r2 } from '@storagesdk/adapters/r2';
 import { tigris } from '@storagesdk/adapters/tigris';
+import { vercel } from '@storagesdk/adapters/vercel';
 import type { StorageProviderConfig } from './types.js';
 
 /**
@@ -51,6 +52,19 @@ export const storageProviders: StorageProviderConfig[] = [
         accessKeyId: process.env.TIGRIS_STORAGE_ACCESS_KEY_ID!,
         secretAccessKey: process.env.TIGRIS_STORAGE_SECRET_ACCESS_KEY!,
         ...(process.env.TIGRIS_STORAGE_ENDPOINT ? { endpoint: process.env.TIGRIS_STORAGE_ENDPOINT } : {}),
+      }),
+    }),
+    fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
+  },
+  {
+    name: 'vercel-blob',
+    requiredEnvVars: ['BLOB_READ_WRITE_TOKEN'],
+    bucket: process.env.VERCEL_BLOB_BUCKET || 'benchmarks',
+    createStorage: () => new Storage({
+      adapter: vercel({
+        bucket: process.env.VERCEL_BLOB_BUCKET || 'benchmarks',
+        token: process.env.BLOB_READ_WRITE_TOKEN!,
+        access: 'private',
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
