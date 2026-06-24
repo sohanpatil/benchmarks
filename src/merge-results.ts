@@ -1,7 +1,7 @@
 /**
  * Merge per-provider benchmark results into combined result files.
  *
- * Usage: tsx src/merge-results.ts --input <artifacts-dir> [--mode storage|browser|browser-throughput]
+ * Usage: tsx src/merge-results.ts --input <artifacts-dir> [--mode storage|snapshot-fork|browser|browser-throughput]
  *
  * By default, merges sandbox benchmark results: reads latest.json files from
  * the input directory, groups by mode (sequential/staggered/burst), computes
@@ -31,6 +31,7 @@ import {
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
 import type { BenchmarkResult } from './sandbox/types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
+import type { SnapshotForkBenchmarkResult } from './storage/snapshot-fork-types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
 import type { ThroughputBenchmarkResult } from './browser/throughput-types.js';
 
@@ -46,7 +47,7 @@ function getArgValue(flag: string): string | undefined {
 const inputDir = getArgValue('--input');
 const mergeMode = getArgValue('--mode');
 if (!inputDir) {
-  console.error('Usage: tsx src/merge-results.ts --input <artifacts-dir> [--mode storage|browser|browser-throughput]');
+  console.error('Usage: tsx src/merge-results.ts --input <artifacts-dir> [--mode storage|snapshot-fork|browser|browser-throughput]');
   process.exit(1);
 }
 
@@ -286,6 +287,116 @@ async function mainStorage() {
 }
 
 /**
+ * Print a snapshot/fork results table to stdout.
+ */
+function printSnapshotForkResultsTable(results: SnapshotForkBenchmarkResult[], dataset: string): void {
+  const sorted = [...results].sort((a, b) => (b.compositeScore || 0) - (a.compositeScore || 0));
+
+  console.log(`\n${'='.repeat(95)}`);
+  console.log(`  SNAPSHOT/FORK BENCHMARK RESULTS - ${dataset.toUpperCase()}`);
+  console.log('='.repeat(95));
+  console.log(
+    ['Provider', 'Score', 'Snap create', 'Fork(snap)', 'Fork(live)', 'Status']
+      .map((h, i) => h.padEnd([14, 8, 14, 14, 14, 10][i]))
+      .join(' | ')
+  );
+  console.log(
+    [14, 8, 14, 14, 14, 10].map(w => '-'.repeat(w)).join('-+-')
+  );
+
+  for (const r of sorted) {
+    if (r.skipped) {
+      console.log([r.provider.padEnd(14), '--'.padEnd(8), '--'.padEnd(14), '--'.padEnd(14), '--'.padEnd(14), 'SKIPPED'.padEnd(10)].join(' | '));
+      continue;
+    }
+    const ok = r.iterations.filter(i => !i.error && i.verified).length;
+    const total = r.iterations.length;
+    const score = r.compositeScore !== undefined ? r.compositeScore.toFixed(1) : '--';
+    const snap = (r.summary.snapshotCreateMs.median / 1000).toFixed(2) + 's';
+    const forkSnap = (r.summary.forkFromSnapshotMs.median / 1000).toFixed(2) + 's';
+    const forkLive = (r.summary.forkFromLiveMs.median / 1000).toFixed(2) + 's';
+    console.log([r.provider.padEnd(14), score.padEnd(8), snap.padEnd(14), forkSnap.padEnd(14), forkLive.padEnd(14), `${ok}/${total} OK`.padEnd(10)].join(' | '));
+  }
+  console.log('='.repeat(95));
+}
+
+/**
+ * Merge snapshot/fork benchmark results, grouped by dataset.
+ *
+ * Composite scores use an absolute latency ceiling (not cross-provider
+ * normalization), so merging is just dedupe-by-provider + recompute + write —
+ * the per-provider scores are already comparable.
+ */
+async function mainSnapshotFork() {
+  const jsonFiles: string[] = [];
+  function walk(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === 'latest.json') jsonFiles.push(full);
+    }
+  }
+  walk(inputDir!);
+
+  if (jsonFiles.length === 0) {
+    console.error(`No latest.json files found in ${inputDir}`);
+    process.exit(1);
+  }
+
+  console.log(`Found ${jsonFiles.length} result files`);
+
+  // Group by dataset, inferred from the parent directory name, e.g.
+  // sf-artifacts/snapshot-fork-results-aws-s3/snapshot-fork/small/latest.json
+  const byDataset: Record<string, { results: { result: SnapshotForkBenchmarkResult; fromSingleProvider: boolean }[] }> = {};
+
+  for (const file of jsonFiles) {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf-8')) as { results: SnapshotForkBenchmarkResult[] };
+    const fromSingleProvider = raw.results.length === 1;
+    const dataset = path.basename(path.dirname(file));
+    for (const result of raw.results) {
+      if (!byDataset[dataset]) byDataset[dataset] = { results: [] };
+      byDataset[dataset].results.push({ result, fromSingleProvider });
+    }
+  }
+
+  const { computeSnapshotForkCompositeScores, writeSnapshotForkResultsJson } = await import('./storage/snapshot-fork-benchmark.js');
+
+  for (const [dataset, { results }] of Object.entries(byDataset)) {
+    // Deduplicate by provider, preferring fresh single-provider files over
+    // stale combined files that may have been checked out by git.
+    const seen = new Map<string, { result: SnapshotForkBenchmarkResult; fromSingleProvider: boolean }>();
+    for (const entry of results) {
+      const existing = seen.get(entry.result.provider);
+      if (!existing || (entry.fromSingleProvider && !existing.fromSingleProvider)) {
+        seen.set(entry.result.provider, entry);
+      }
+    }
+    const deduped = Array.from(seen.values()).map(e => e.result);
+
+    if (deduped.length !== results.length) {
+      console.log(`\nMerging ${deduped.length} provider results for snapshot-fork/${dataset} (deduplicated from ${results.length})`);
+    } else {
+      console.log(`\nMerging ${deduped.length} provider results for snapshot-fork/${dataset}`);
+    }
+
+    computeSnapshotForkCompositeScores(deduped);
+    printSnapshotForkResultsTable(deduped, dataset);
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const resultsDir = path.resolve(ROOT, `results/snapshot-fork/${dataset}`);
+    fs.mkdirSync(resultsDir, { recursive: true });
+
+    const outPath = path.join(resultsDir, `${timestamp}.json`);
+    await writeSnapshotForkResultsJson(deduped, outPath);
+
+    const latestPath = path.join(resultsDir, 'latest.json');
+    fs.copyFileSync(outPath, latestPath);
+    console.log(`Copied latest: ${latestPath}`);
+  }
+}
+
+/**
  * Print a browser results table to stdout.
  */
 function printBrowserResultsTable(results: BrowserBenchmarkResult[]): void {
@@ -473,6 +584,8 @@ async function mainBrowserThroughput() {
 
 const runner = mergeMode === 'storage'
   ? mainStorage
+  : mergeMode === 'snapshot-fork'
+  ? mainSnapshotFork
   : mergeMode === 'browser'
   ? mainBrowser
   : mergeMode === 'browser-throughput'
