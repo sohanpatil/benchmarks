@@ -1,37 +1,8 @@
 import crypto from 'crypto';
 import type { Storage } from '@storagesdk/core';
 import { withTimeout } from '../util/timeout.js';
+import { round, roundStats, computeStats as computeStorageStats } from './stats.js';
 import type { StorageProviderConfig, StorageBenchmarkResult, StorageTimingResult } from './types.js';
-
-function round(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function percentile(sorted: number[], p: number): number {
-  const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.min(idx, sorted.length - 1)];
-}
-
-function computeStorageStats(values: number[]): { median: number; p95: number; p99: number } {
-  if (values.length === 0) return { median: 0, p95: 0, p99: 0 };
-
-  const sorted = [...values].sort((a, b) => a - b);
-  const trimCount = Math.floor(sorted.length * 0.05);
-  const trimmed = trimCount > 0 && sorted.length - 2 * trimCount > 0
-    ? sorted.slice(trimCount, sorted.length - trimCount)
-    : sorted;
-
-  const mid = Math.floor(trimmed.length / 2);
-  const median = trimmed.length % 2 === 0
-    ? (trimmed[mid - 1] + trimmed[mid]) / 2
-    : trimmed[mid];
-
-  return {
-    median,
-    p95: percentile(trimmed, 95),
-    p99: percentile(trimmed, 99),
-  };
-}
 
 function randomId(): string {
   return Math.random().toString(36).substring(2, 15);
@@ -183,10 +154,6 @@ export async function runStorageBenchmark(config: StorageProviderConfig, fileSiz
       throughputMbps: computeStorageStats(throughputs),
     },
   };
-}
-
-function roundStats(s: { median: number; p95: number; p99: number }) {
-  return { median: round(s.median), p95: round(s.p95), p99: round(s.p99) };
 }
 
 export async function writeStorageResultsJson(results: StorageBenchmarkResult[], outPath: string): Promise<void> {

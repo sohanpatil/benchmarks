@@ -8,6 +8,11 @@ import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
+import {
+  runSnapshotForkBenchmark,
+  writeSnapshotForkResultsJson,
+  computeSnapshotForkCompositeScores,
+} from './storage/snapshot-fork-benchmark.js';
 import { runBrowserBenchmark, writeBrowserResultsJson } from './browser/benchmark.js';
 import { runThroughputBenchmark, writeThroughputResultsJson } from './browser/throughput-benchmark.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
@@ -21,6 +26,8 @@ import { computeBrowserCompositeScores } from './browser/scoring.js';
 import { computeThroughputCompositeScores } from './browser/throughput-scoring.js';
 import type { BenchmarkResult, BenchmarkMode } from './sandbox/types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
+import type { SnapshotForkBenchmarkResult } from './storage/snapshot-fork-types.js';
+import type { DatasetPreset } from './storage/snapshot-fork-types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
 import type { ThroughputBenchmarkResult } from './browser/throughput-types.js';
 
@@ -36,6 +43,7 @@ const concurrency = parseInt(getArgValue(args, '--concurrency') || '100', 10);
 const storageConcurrency = parseInt(getArgValue(args, '--storage-concurrency') || '1', 10);
 const staggerDelay = parseInt(getArgValue(args, '--stagger-delay') || '200', 10);
 const fileSizeArg = getArgValue(args, '--file-size') || '10MB';
+const datasetArg = getArgValue(args, '--dataset') || 'small';
 
 function getArgValue(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
@@ -43,9 +51,10 @@ function getArgValue(args: string[], flag: string): string | undefined {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['browser-throughput'] {
+function getModesToRun(): BenchmarkMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
+  if (rawMode === 'snapshot-fork') return ['snapshot-fork'];
   if (rawMode === 'browser') return ['browser'];
   if (rawMode === 'browser-throughput') return ['browser-throughput'];
   const m = rawMode === 'concurrent' ? 'burst' : rawMode as BenchmarkMode;
@@ -53,13 +62,14 @@ function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['browse
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: BenchmarkMode | 'storage' | 'browser-throughput'): string {
+function modeToDir(m: BenchmarkMode | 'storage' | 'snapshot-fork' | 'browser-throughput'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
     case 'burst':
     case 'concurrent': return 'burst_tti';
     case 'storage': return 'storage';
+    case 'snapshot-fork': return 'snapshot-fork';
     case 'browser-throughput': return 'browser-throughput';
     default: return `${m}_tti`;
   }
@@ -177,6 +187,64 @@ async function runStorage(toRun: typeof storageProviders, fileSizeLabel: string)
 
   // Copy results to latest.json
   const latestPath = path.join(sizeDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
+async function runSnapshotFork(toRun: typeof storageProviders, datasetLabel: string): Promise<void> {
+  const { DATASET_PRESETS } = await import('./storage/snapshot-fork-types.js');
+  const validDatasets = Object.keys(DATASET_PRESETS);
+  if (!(datasetLabel in DATASET_PRESETS)) {
+    console.error(`Invalid --dataset "${datasetLabel}". Valid datasets: ${validDatasets.join(', ')}`);
+    process.exit(1);
+  }
+  const dataset = datasetLabel as DatasetPreset;
+  const spec = DATASET_PRESETS[dataset];
+
+  // Each iteration seeds real objects and creates real snapshots/forks, so this
+  // mode is far more expensive than the upload/download benchmark. Default to a
+  // small count unless the user explicitly overrode --iterations.
+  const sfIterations = iterationsArg ? iterations : 10;
+
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: SNAPSHOT-FORK');
+  console.log(`  Dataset: ${dataset} (${spec.objectCount} × ${(spec.objectSizeBytes / 1024 / 1024).toFixed(0)}MB)`);
+  console.log(`  Iterations per provider: ${sfIterations}`);
+  console.log('='.repeat(70));
+
+  const results: SnapshotForkBenchmarkResult[] = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runSnapshotForkBenchmark({ ...providerConfig, iterations: sfIterations }, dataset);
+    results.push(result);
+  }
+
+  computeSnapshotForkCompositeScores(results);
+
+  console.log('\n--- Snapshot/Fork Benchmark Results ---');
+  for (const r of results) {
+    if (r.skipped) {
+      console.log(`${r.provider}: SKIPPED (${r.skipReason})`);
+      continue;
+    }
+    const ok = r.iterations.filter(i => !i.error && i.verified).length;
+    const total = r.iterations.length;
+    console.log(`${r.provider}:`);
+    console.log(`  Snapshot create: ${(r.summary.snapshotCreateMs.median / 1000).toFixed(2)}s (median)`);
+    console.log(`  Fork from snapshot: ${(r.summary.forkFromSnapshotMs.median / 1000).toFixed(2)}s (median)`);
+    console.log(`  Fork from live: ${(r.summary.forkFromLiveMs.median / 1000).toFixed(2)}s (median)`);
+    console.log(`  Score: ${r.compositeScore?.toFixed(1) || '--'} (${ok}/${total} OK)`);
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const subDir = modeToDir('snapshot-fork');
+  const datasetDir = path.resolve(__dirname, `../results/${subDir}/${dataset}`);
+  fs.mkdirSync(datasetDir, { recursive: true });
+
+  const outPath = path.join(datasetDir, `${timestamp}.json`);
+  await writeSnapshotForkResultsJson(results, outPath);
+
+  const latestPath = path.join(datasetDir, 'latest.json');
   fs.copyFileSync(outPath, latestPath);
   console.log(`Copied latest: ${latestPath}`);
 }
@@ -356,6 +424,27 @@ async function main() {
 
     await runStorage(toRun, fileSizeArg);
     console.log('\nAll storage tests complete.');
+    return;
+  }
+
+  // Handle snapshot/fork mode separately
+  if (modes[0] === 'snapshot-fork') {
+    console.log('ComputeSDK Storage Snapshot/Fork Benchmarks');
+    console.log(`Dataset: ${datasetArg}`);
+    console.log(`Date: ${new Date().toISOString()}\n`);
+
+    const toRun = providerFilter
+      ? storageProviders.filter(p => p.name === providerFilter)
+      : storageProviders;
+
+    if (toRun.length === 0) {
+      console.error(`Unknown storage provider: ${providerFilter}`);
+      console.error(`Available: ${storageProviders.map(p => p.name).join(', ')}`);
+      process.exit(1);
+    }
+
+    await runSnapshotFork(toRun, datasetArg);
+    console.log('\nAll snapshot/fork tests complete.');
     return;
   }
 
