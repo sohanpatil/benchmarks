@@ -237,7 +237,8 @@ function buildProbeCommand(markerToken: string, previousMarkerToken?: string): s
   const token = shellQuote(markerToken);
   const processToken = shellQuote(processMarker);
   const previousProcessToken = shellQuote(previousProcessMarker);
-  const perfScript = shellQuote(buildPerfScript());
+  const perfScript = Buffer.from(buildPerfScript()).toString('base64');
+  const perfCommand = shellQuote(`eval(Buffer.from('${perfScript}', 'base64').toString())`);
 
   return [
     'set +e',
@@ -277,7 +278,7 @@ function buildProbeCommand(markerToken: string, previousMarkerToken?: string): s
     'go_version=$(go version 2>/dev/null || true)',
     'docker_version=$(docker --version 2>/dev/null || true)',
     'docker_usable=false; if [ -n "$docker_version" ] && docker version >/dev/null 2>&1; then docker_usable=true; fi',
-    `if [ -n "$node_version" ]; then node -e ${perfScript} 2>/dev/null || printf "perfProbeOk=false\\n"; else printf "perfProbeOk=false\\n"; fi`,
+    `if [ -n "$node_version" ]; then node -e ${perfCommand} 2>/dev/null || printf "perfProbeOk=false\\n"; else printf "perfProbeOk=false\\n"; fi`,
     'printf "%s" "$token" > "$fs_marker" 2>/dev/null || true',
     'printf "%s" "$token" > "$var_tmp_marker" 2>/dev/null || true',
     '(sh -c "while true; do sleep 300; done" "$process_marker" >/dev/null 2>&1 &)',
