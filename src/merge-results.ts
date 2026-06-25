@@ -485,7 +485,7 @@ async function mainBrowserThroughput() {
   console.log(`Copied latest: ${latestPath}`);
 }
 
-async function mainSandboxReliability() {
+async function mainSandboxReliability(resultsSubdir = 'sandbox-reliability') {
   const jsonFiles: string[] = [];
   function walk(dir: string) {
     if (!fs.existsSync(dir)) return;
@@ -509,7 +509,7 @@ async function mainSandboxReliability() {
 
   for (const file of jsonFiles) {
     const dirName = path.basename(path.dirname(file));
-    if (dirName !== 'sandbox-reliability') continue;
+    if (dirName !== resultsSubdir) continue;
 
     const raw: ReliabilityResultFile = JSON.parse(fs.readFileSync(file, 'utf-8'));
     mergedConfig = { ...mergedConfig, ...raw.config };
@@ -523,12 +523,12 @@ async function mainSandboxReliability() {
   }
 
   const deduped = Array.from(seen.values()).map(e => e.result);
-  console.log(`\nMerging ${deduped.length} provider results for mode: sandbox-reliability`);
+  console.log(`\nMerging ${deduped.length} provider results for mode: ${resultsSubdir}`);
 
   printReliabilityResultsTable(deduped);
 
   const timestamp = timestampForFilename();
-  const resultsDir = path.resolve(ROOT, 'results/sandbox-reliability');
+  const resultsDir = path.resolve(ROOT, `results/${resultsSubdir}`);
   fs.mkdirSync(resultsDir, { recursive: true });
 
   const outPath = path.join(resultsDir, `${timestamp}.json`);
@@ -547,6 +547,8 @@ const runner = mergeMode === 'storage'
   ? mainBrowserThroughput
   : mergeMode === 'sandbox-reliability'
   ? mainSandboxReliability
+  : mergeMode === 'sandbox-features'
+  ? () => mainSandboxReliability('sandbox-features')
   : main;
 runner().catch(err => {
   console.error('Merge failed:', err);

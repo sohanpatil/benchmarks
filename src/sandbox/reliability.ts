@@ -9,6 +9,7 @@ export interface ReliabilityOptions {
   samples?: number;
   durationMs?: number;
   intervalMs?: number;
+  probeProfile?: ProbeProfile;
 }
 
 export interface ReliabilityProbeResult {
@@ -26,7 +27,7 @@ export interface ReliabilityIteration {
 
 export interface ReliabilityBenchmarkResult {
   provider: string;
-  mode: 'reliability';
+  mode: ProbeProfile;
   iterations: ReliabilityIteration[];
   summary: {
     availability: number;
@@ -94,6 +95,7 @@ export interface ReliabilityOutageEvent {
 }
 
 type RunCommandResult = { exitCode: number; stdout?: string; stderr?: string };
+type ProbeProfile = 'reliability' | 'features';
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_SAMPLES = 1;
@@ -104,11 +106,12 @@ export async function runReliabilityBenchmark(
   options: ReliabilityOptions = {},
 ): Promise<ReliabilityBenchmarkResult> {
   const { name, timeout = 120_000, requiredEnvVars, sandboxOptions, destroyTimeoutMs } = config;
+  const probeProfile = options.probeProfile ?? 'reliability';
   const missingVars = requiredEnvVars.filter(v => !process.env[v]);
   if (missingVars.length > 0) {
     return {
       provider: name,
-      mode: 'reliability',
+      mode: probeProfile,
       iterations: [],
       summary: emptySummary(),
       skipped: true,
@@ -123,7 +126,7 @@ export async function runReliabilityBenchmark(
   const runId = randomUUID().split('-').join('');
   const iterations: ReliabilityIteration[] = [];
 
-  console.log(`\n--- Reliability benchmarking: ${name} ---`);
+  console.log(`\n--- ${probeProfile === 'features' ? 'Feature matrix' : 'Reliability'} benchmarking: ${name} ---`);
   console.log(`  Samples: ${deadline ? `until ${new Date(deadline).toISOString()}` : samples}`);
   console.log(`  Interval: ${(intervalMs / 1000).toFixed(1)}s`);
 
@@ -141,6 +144,7 @@ export async function runReliabilityBenchmark(
       destroyTimeoutMs,
       `${runId}_${i}`,
       i > 0 ? `${runId}_${i - 1}` : undefined,
+      probeProfile,
     );
     iterations.push(result);
 
@@ -153,10 +157,17 @@ export async function runReliabilityBenchmark(
 
   return {
     provider: name,
-    mode: 'reliability',
+    mode: probeProfile,
     iterations,
     summary: summarize(iterations),
   };
+}
+
+export async function runFeatureMatrixBenchmark(
+  config: ProviderConfig,
+  options: Omit<ReliabilityOptions, 'probeProfile'> = {},
+): Promise<ReliabilityBenchmarkResult> {
+  return runReliabilityBenchmark(config, { ...options, probeProfile: 'features' });
 }
 
 async function runReliabilityIteration(
@@ -166,6 +177,7 @@ async function runReliabilityIteration(
   destroyTimeoutMs: number = 15_000,
   markerToken: string,
   previousMarkerToken?: string,
+  probeProfile: ProbeProfile = 'reliability',
 ): Promise<ReliabilityIteration> {
   const startedAt = new Date().toISOString();
   const start = performance.now();
@@ -181,9 +193,9 @@ async function runReliabilityIteration(
 
     const probeStart = performance.now();
     const probe = await withTimeout(
-      sandbox.runCommand(buildProbeCommand(markerToken, previousMarkerToken)),
+      sandbox.runCommand(buildProbeCommand(markerToken, previousMarkerToken, probeProfile)),
       PROBE_TIMEOUT_MS,
-      'Reliability probe timed out',
+      `${probeProfile === 'features' ? 'Feature matrix' : 'Reliability'} probe timed out`,
     ) as RunCommandResult;
     probeMs = performance.now() - probeStart;
 
@@ -193,10 +205,10 @@ async function runReliabilityIteration(
     if (probe.exitCode !== 0) {
       throw new Error(`Reliability probe failed with exit code ${probe.exitCode}: ${probe.stderr || 'Unknown error'}`);
     }
-    if (probes.fsIsolationOk === false) {
+    if (probeProfile === 'features' && probes.fsIsolationOk === false) {
       throw new Error(`Filesystem isolation failed: previous marker at ${probes.previousFsMarkerPath}`);
     }
-    if (probes.processIsolationOk === false) {
+    if (probeProfile === 'features' && probes.processIsolationOk === false) {
       throw new Error('Process isolation failed: previous in-memory marker process is visible');
     }
 
@@ -229,7 +241,9 @@ async function runReliabilityIteration(
   }
 }
 
-function buildProbeCommand(markerToken: string, previousMarkerToken?: string): string {
+function buildProbeCommand(markerToken: string, previousMarkerToken?: string, probeProfile: ProbeProfile = 'reliability'): string {
+  if (probeProfile === 'reliability') return buildReliabilityProbeCommand();
+
   const fsMarker = '/tmp/.computesdk_reliability_fs_marker';
   const varTmpMarker = '/var/tmp/.computesdk_reliability_fs_marker';
   const processMarker = `computesdk_reliability_process_${markerToken}`;
@@ -330,6 +344,19 @@ function buildProbeCommand(markerToken: string, previousMarkerToken?: string): s
     'printf "cargoVersion=%s\\n" "$cargo_version"',
     'printf "goVersion=%s\\n" "$go_version"',
     'printf "dockerVersion=%s\\n" "$docker_version"',
+  ].join('; ');
+}
+
+function buildReliabilityProbeCommand(): string {
+  return [
+    'set +e',
+    'started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)',
+    'node_version=$(node -v 2>/dev/null || true)',
+    'printf "commandOk=true\\n"',
+    'printf "shell=true\\n"',
+    'printf "hasNode=%s\\n" "$([ -n "$node_version" ] && printf true || printf false)"',
+    'printf "nodeVersion=%s\\n" "$node_version"',
+    'printf "sandboxTime=%s\\n" "$started_at"',
   ].join('; ');
 }
 
@@ -607,8 +634,11 @@ function round(n: number): number {
 }
 
 export function printReliabilityResultsTable(results: ReliabilityBenchmarkResult[]): void {
+  const title = results.some(r => r.mode === 'features')
+    ? 'SANDBOX FEATURE MATRIX RESULTS'
+    : 'SANDBOX RELIABILITY BENCHMARK RESULTS';
   console.log(`\n${'='.repeat(100)}`);
-  console.log('  SANDBOX RELIABILITY BENCHMARK RESULTS');
+  console.log(`  ${title}`);
   console.log('='.repeat(100));
   console.log(['Provider', 'State', 'Availability', 'Median Total', 'Median Create', 'Failures', 'Status']
     .map((h, i) => h.padEnd([14, 10, 14, 14, 14, 10, 10][i]))

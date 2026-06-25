@@ -1,4 +1,4 @@
-name: Sandbox Reliability Benchmark
+name: Sandbox Feature Matrix
 
 on:
   pull_request:
@@ -7,36 +7,23 @@ on:
       - 'src/util/**'
       - 'src/run.ts'
       - 'src/merge-results.ts'
-      - '.github/workflows/sandbox-reliability.yml'
+      - '.github/workflows/sandbox-features.yml'
       - 'package.json'
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 6 * * *'
   workflow_dispatch:
-    inputs:
-      duration-seconds:
-        description: 'How long each provider job should sample'
-        required: false
-        default: '600'
-      interval-seconds:
-        description: 'Seconds between samples'
-        required: false
-        default: '30'
-      samples:
-        description: 'Optional fixed sample count; overrides duration when set'
-        required: false
-        default: ''
 
 permissions: {}
 
 jobs:
   bench:
-    name: Reliability ${{ matrix.provider }}
+    name: Features ${{ matrix.provider }}
     runs-on: namespace-profile-default
     timeout-minutes: 25
     permissions:
       contents: read
     concurrency:
-      group: sandbox-reliability-${{ matrix.provider }}
+      group: sandbox-features-${{ matrix.provider }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -68,7 +55,7 @@ jobs:
         run: npm ci
       - name: Clear stale results from checkout
         run: rm -rf results/
-      - name: Run reliability benchmark
+      - name: Run feature matrix benchmark
         env:
           COMPUTESDK_API_KEY: ${{ secrets.COMPUTESDK_API_KEY }}
           ARCHIL_API_KEY: ${{ secrets.ARCHIL_API_KEY }}
@@ -94,38 +81,19 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          INPUT_SAMPLES: ${{ github.event.inputs.samples }}
-          INPUT_DURATION_SECONDS: ${{ github.event.inputs['duration-seconds'] || '600' }}
-          INPUT_INTERVAL_SECONDS: ${{ github.event.inputs['interval-seconds'] || '30' }}
         run: |
-          SAMPLE_FLAG=""
-          if [ -n "$INPUT_SAMPLES" ]; then
-            case "$INPUT_SAMPLES" in
-              *[!0-9]*) echo "Invalid samples: $INPUT_SAMPLES" >&2; exit 1 ;;
-              *) SAMPLE_FLAG="--samples $INPUT_SAMPLES" ;;
-            esac
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            SAMPLE_FLAG="--samples 1"
-          fi
-          case "$INPUT_DURATION_SECONDS" in *[!0-9]*) echo "Invalid duration-seconds: $INPUT_DURATION_SECONDS" >&2; exit 1 ;; esac
-          case "$INPUT_INTERVAL_SECONDS" in *[!0-9]*) echo "Invalid interval-seconds: $INPUT_INTERVAL_SECONDS" >&2; exit 1 ;; esac
-          npm run bench:reliability -- \
-            --provider ${{ matrix.provider }} \
-            --duration-seconds "$INPUT_DURATION_SECONDS" \
-            --interval-seconds "$INPUT_INTERVAL_SECONDS" \
-            $SAMPLE_FLAG
+          npm run bench:features -- --provider ${{ matrix.provider }}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sandbox-reliability-${{ matrix.provider }}
+          name: sandbox-features-${{ matrix.provider }}
           path: results/
           if-no-files-found: ignore
           retention-days: 7
 
   collect:
-    name: Collect Reliability Results
+    name: Collect Feature Matrix Results
     runs-on: namespace-profile-default
     needs: bench
     if: always()
@@ -147,9 +115,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-          pattern: sandbox-reliability-*
+          pattern: sandbox-features-*
       - name: Merge results
-        run: npx tsx src/merge-results.ts --input artifacts --mode sandbox-reliability
+        run: npx tsx src/merge-results.ts --input artifacts --mode sandbox-features
       - name: Post results to PR
         if: github.event_name == 'pull_request'
         continue-on-error: true
@@ -159,30 +127,33 @@ jobs:
             const fs = require('fs');
             const path = require('path');
 
-            const latestPath = path.join('results', 'sandbox-reliability', 'latest.json');
+            const latestPath = path.join('results', 'sandbox-features', 'latest.json');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            let body = '## Sandbox Reliability Results\n\n';
+            let body = '## Sandbox Feature Matrix Results\n\n';
 
             if (!fs.existsSync(latestPath)) {
-              body += '> No sandbox reliability results were generated.\n\n';
+              body += '> No sandbox feature matrix results were generated.\n\n';
             } else {
               const data = JSON.parse(fs.readFileSync(latestPath, 'utf-8'));
               const results = data.results
                 .filter(r => !r.skipped)
-                .sort((a, b) => (b.summary.availability || 0) - (a.summary.availability || 0));
+                .sort((a, b) => a.provider.localeCompare(b.provider));
 
               if (results.length === 0) {
-                body += '> No sandbox reliability results were generated.\n\n';
+                body += '> No sandbox feature matrix results were generated.\n\n';
               } else {
-                body += '| Provider | State | Availability | Median Total | Median Create | Failures |\n';
-                body += '|----------|-------|--------------|--------------|---------------|----------|\n';
+                body += '| Provider | Features | Node | Python | Docker | TCP | UDP | FS IO | CPU Ops/s |\n';
+                body += '|----------|----------|------|--------|--------|-----|-----|-------|-----------|\n';
 
                 for (const r of results) {
-                  const summary = r.summary || {};
-                  const availability = `${((summary.availability || 0) * 100).toFixed(1)}%`;
-                  const totalMs = summary.totalMs?.median ? `${(summary.totalMs.median / 1000).toFixed(2)}s` : '--';
-                  const createMs = summary.createMs?.median ? `${(summary.createMs.median / 1000).toFixed(2)}s` : '--';
-                  body += `| ${r.provider} | ${summary.status || '--'} | ${availability} | ${totalMs} | ${createMs} | ${summary.failures ?? '--'} |\n`;
+                  const features = r.summary?.featureMatrix || {};
+                  const supported = Object.values(features).filter(f => f.supportRate === 1).length;
+                  const total = Object.keys(features).length;
+                  const probes = r.iterations?.[0]?.probes || {};
+                  const mark = (value) => value === true ? 'yes' : value === false ? 'no' : '--';
+                  const fsIo = probes.fsWrite1MbMs && probes.fsRead1MbMs ? `${probes.fsWrite1MbMs}/${probes.fsRead1MbMs}ms` : '--';
+                  const cpu = probes.cpuSha256OpsPerSecond ? Math.round(probes.cpuSha256OpsPerSecond).toLocaleString() : '--';
+                  body += `| ${r.provider} | ${supported}/${total} | ${mark(probes.hasNode)} | ${mark(probes.hasPython)} | ${mark(probes.dockerUsable)} | ${mark(probes.tcpExample)} | ${mark(probes.udpDns)} | ${fsIo} | ${cpu} |\n`;
                 }
 
                 body += '\n';
@@ -191,7 +162,7 @@ jobs:
 
             body += `---\n*[View full run](${runUrl}) · Results available as build artifacts*`;
 
-            const marker = '## Sandbox Reliability Results';
+            const marker = '## Sandbox Feature Matrix Results';
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -219,9 +190,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add results/sandbox-reliability/
+          git add results/sandbox-features/
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: update sandbox reliability results [skip ci]"
+          git commit -m "chore: update sandbox feature matrix results [skip ci]"
 
           branch="${GITHUB_REF#refs/heads/}"
           for attempt in 1 2 3 4 5; do

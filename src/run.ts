@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
-import { printReliabilityResultsTable, runReliabilityBenchmark, writeReliabilityResultsJson } from './sandbox/reliability.js';
+import { printReliabilityResultsTable, runFeatureMatrixBenchmark, runReliabilityBenchmark, writeReliabilityResultsJson } from './sandbox/reliability.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import { runBrowserBenchmark, writeBrowserResultsJson } from './browser/benchmark.js';
 import { runThroughputBenchmark, writeThroughputResultsJson } from './browser/throughput-benchmark.js';
@@ -52,12 +52,13 @@ function timestampForFilename(): string {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['browser-throughput'] | ['reliability'] {
+function getModesToRun(): BenchmarkMode[] | ['storage'] | ['browser'] | ['browser-throughput'] | ['reliability'] | ['features'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'browser') return ['browser'];
   if (rawMode === 'browser-throughput') return ['browser-throughput'];
   if (rawMode === 'reliability') return ['reliability'];
+  if (rawMode === 'features') return ['features'];
   const m = rawMode === 'concurrent' ? 'burst' : rawMode as BenchmarkMode;
   return [m];
 }
@@ -333,6 +334,38 @@ async function runReliability(toRun: typeof providers): Promise<void> {
   console.log(`Copied latest: ${latestPath}`);
 }
 
+async function runFeatures(toRun: typeof providers): Promise<void> {
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: SANDBOX FEATURES');
+  console.log('  Samples per provider: 1');
+  console.log('='.repeat(70));
+
+  const results: ReliabilityBenchmarkResult[] = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runFeatureMatrixBenchmark(providerConfig, { samples: 1, intervalMs: 0 });
+    results.push(result);
+  }
+
+  printReliabilityResultsTable(results);
+
+  const timestamp = timestampForFilename();
+  const resultsDir = path.resolve(__dirname, '../results/sandbox-features');
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeReliabilityResultsJson(results, outPath, {
+    samples: 1,
+    durationMs: null,
+    intervalMs: 0,
+    timeoutMs: toRun.reduce((max, p) => Math.max(max, p.timeout ?? 120_000), 0) || 120_000,
+  });
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
 async function main() {
   const modes = getModesToRun();
 
@@ -376,6 +409,25 @@ async function main() {
 
     await runReliability(toRun);
     console.log('\nAll reliability tests complete.');
+    return;
+  }
+
+  if (modes[0] === 'features') {
+    console.log('ComputeSDK Sandbox Feature Matrix Benchmarks');
+    console.log(`Date: ${new Date().toISOString()}\n`);
+
+    const toRun = providerFilter
+      ? providers.filter(p => p.name === providerFilter)
+      : providers;
+
+    if (toRun.length === 0) {
+      console.error(`Unknown provider: ${providerFilter}`);
+      console.error(`Available: ${providers.map(p => p.name).join(', ')}`);
+      process.exit(1);
+    }
+
+    await runFeatures(toRun);
+    console.log('\nAll feature matrix tests complete.');
     return;
   }
 
