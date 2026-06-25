@@ -52,7 +52,7 @@ function getArgValue(flag: string): string | undefined {
 const inputDir = getArgValue('--input');
 const mergeMode = getArgValue('--mode');
 if (!inputDir) {
-  console.error('Usage: tsx src/merge-results.ts --input <artifacts-dir> [--mode storage|browser|browser-throughput]');
+  console.error('Usage: tsx src/merge-results.ts --input <artifacts-dir> [--mode storage|browser|browser-throughput|sandbox-reliability|sandbox-features]');
   process.exit(1);
 }
 
@@ -523,6 +523,11 @@ async function mainSandboxReliability(resultsSubdir = 'sandbox-reliability') {
   }
 
   const deduped = Array.from(seen.values()).map(e => e.result);
+  if (deduped.length === 0) {
+    console.error(`No ${resultsSubdir} results found in ${inputDir}`);
+    process.exit(1);
+  }
+
   console.log(`\nMerging ${deduped.length} provider results for mode: ${resultsSubdir}`);
 
   printReliabilityResultsTable(deduped);

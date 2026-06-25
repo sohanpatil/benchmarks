@@ -47,6 +47,20 @@ function getArgValue(args: string[], flag: string): string | undefined {
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : undefined;
 }
 
+function parsePositiveIntegerArg(value: string | undefined, flag: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d+$/.test(value)) {
+    console.error(`Invalid ${flag}: expected a positive integer, got "${value}"`);
+    process.exit(1);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    console.error(`Invalid ${flag}: expected a positive integer, got "${value}"`);
+    process.exit(1);
+  }
+  return parsed;
+}
+
 function timestampForFilename(): string {
   return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
@@ -297,9 +311,11 @@ async function runBrowserThroughput(toRun: typeof throughputProviders): Promise<
 }
 
 async function runReliability(toRun: typeof providers): Promise<void> {
-  const samples = samplesArg ? parseInt(samplesArg, 10) : undefined;
-  const durationMs = !samples && durationSecondsArg ? parseInt(durationSecondsArg, 10) * 1000 : undefined;
-  const intervalMs = intervalSecondsArg ? parseInt(intervalSecondsArg, 10) * 1000 : undefined;
+  const samples = parsePositiveIntegerArg(samplesArg, '--samples');
+  const durationSeconds = parsePositiveIntegerArg(durationSecondsArg, '--duration-seconds');
+  const intervalSeconds = parsePositiveIntegerArg(intervalSecondsArg, '--interval-seconds');
+  const durationMs = !samples && durationSeconds ? durationSeconds * 1000 : undefined;
+  const intervalMs = intervalSeconds ? intervalSeconds * 1000 : undefined;
 
   console.log('\n' + '='.repeat(70));
   console.log('  MODE: SANDBOX RELIABILITY');
