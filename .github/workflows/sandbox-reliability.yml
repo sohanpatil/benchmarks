@@ -26,14 +26,15 @@ on:
         required: false
         default: ''
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   bench:
     name: Reliability ${{ matrix.provider }}
     runs-on: namespace-profile-default
     timeout-minutes: 25
+    permissions:
+      contents: read
     concurrency:
       group: sandbox-reliability-${{ matrix.provider }}
       cancel-in-progress: true
@@ -58,10 +59,11 @@ jobs:
           - vercel
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: 'npm'
       - name: Install dependencies
         run: npm ci
       - name: Clear stale results from checkout
@@ -92,18 +94,26 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          INPUT_SAMPLES: ${{ github.event.inputs.samples }}
+          INPUT_DURATION_SECONDS: ${{ github.event.inputs['duration-seconds'] || '600' }}
+          INPUT_INTERVAL_SECONDS: ${{ github.event.inputs['interval-seconds'] || '30' }}
         run: |
           SAMPLE_FLAG=""
-          if [ -n "${{ github.event.inputs.samples }}" ]; then
-            SAMPLE_FLAG="--samples ${{ github.event.inputs.samples }}"
+          if [ -n "$INPUT_SAMPLES" ]; then
+            case "$INPUT_SAMPLES" in
+              *[!0-9]*) echo "Invalid samples: $INPUT_SAMPLES" >&2; exit 1 ;;
+              *) SAMPLE_FLAG="--samples $INPUT_SAMPLES" ;;
+            esac
           fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             SAMPLE_FLAG="--samples 1"
           fi
+          case "$INPUT_DURATION_SECONDS" in *[!0-9]*) echo "Invalid duration-seconds: $INPUT_DURATION_SECONDS" >&2; exit 1 ;; esac
+          case "$INPUT_INTERVAL_SECONDS" in *[!0-9]*) echo "Invalid interval-seconds: $INPUT_INTERVAL_SECONDS" >&2; exit 1 ;; esac
           npm run bench:reliability -- \
             --provider ${{ matrix.provider }} \
-            --duration-seconds ${{ github.event.inputs['duration-seconds'] || '600' }} \
-            --interval-seconds ${{ github.event.inputs['interval-seconds'] || '30' }} \
+            --duration-seconds "$INPUT_DURATION_SECONDS" \
+            --interval-seconds "$INPUT_INTERVAL_SECONDS" \
             $SAMPLE_FLAG
       - name: Upload results
         if: always()
@@ -119,6 +129,10 @@ jobs:
     runs-on: namespace-profile-default
     needs: bench
     if: always()
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
