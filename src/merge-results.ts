@@ -29,13 +29,19 @@ import {
   sortThroughputByCompositeScore,
 } from './browser/throughput-scoring.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
+import { printReliabilityResultsTable, writeReliabilityResultsJson } from './sandbox/reliability.js';
 import type { BenchmarkResult } from './sandbox/types.js';
+import type { ReliabilityBenchmarkResult } from './sandbox/reliability.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
 import type { ThroughputBenchmarkResult } from './browser/throughput-types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+
+function timestampForFilename(): string {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
 
 const args = process.argv.slice(2);
 function getArgValue(flag: string): string | undefined {
@@ -64,6 +70,14 @@ interface StorageResultFile {
   environment: Record<string, any>;
   config: Record<string, any>;
   results: StorageBenchmarkResult[];
+}
+
+interface ReliabilityResultFile {
+  version: string;
+  timestamp: string;
+  environment: Record<string, any>;
+  config: Record<string, any>;
+  results: ReliabilityBenchmarkResult[];
 }
 
 /** Map mode to results subdirectory name, matching run.ts logic */
@@ -471,12 +485,68 @@ async function mainBrowserThroughput() {
   console.log(`Copied latest: ${latestPath}`);
 }
 
+async function mainSandboxReliability() {
+  const jsonFiles: string[] = [];
+  function walk(dir: string) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === 'latest.json') jsonFiles.push(full);
+    }
+  }
+  walk(inputDir!);
+
+  if (jsonFiles.length === 0) {
+    console.error(`No latest.json files found in ${inputDir}`);
+    process.exit(1);
+  }
+
+  console.log(`Found ${jsonFiles.length} result files`);
+
+  const seen = new Map<string, { result: ReliabilityBenchmarkResult; fromSingleProvider: boolean }>();
+  let mergedConfig: Record<string, any> = {};
+
+  for (const file of jsonFiles) {
+    const dirName = path.basename(path.dirname(file));
+    if (dirName !== 'sandbox-reliability') continue;
+
+    const raw: ReliabilityResultFile = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    mergedConfig = { ...mergedConfig, ...raw.config };
+    const fromSingleProvider = raw.results.length === 1;
+    for (const result of raw.results) {
+      const existing = seen.get(result.provider);
+      if (!existing || (fromSingleProvider && !existing.fromSingleProvider)) {
+        seen.set(result.provider, { result, fromSingleProvider });
+      }
+    }
+  }
+
+  const deduped = Array.from(seen.values()).map(e => e.result);
+  console.log(`\nMerging ${deduped.length} provider results for mode: sandbox-reliability`);
+
+  printReliabilityResultsTable(deduped);
+
+  const timestamp = timestampForFilename();
+  const resultsDir = path.resolve(ROOT, 'results/sandbox-reliability');
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeReliabilityResultsJson(deduped, outPath, mergedConfig);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
 const runner = mergeMode === 'storage'
   ? mainStorage
   : mergeMode === 'browser'
   ? mainBrowser
   : mergeMode === 'browser-throughput'
   ? mainBrowserThroughput
+  : mergeMode === 'sandbox-reliability'
+  ? mainSandboxReliability
   : main;
 runner().catch(err => {
   console.error('Merge failed:', err);

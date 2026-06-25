@@ -8,6 +8,7 @@
     "bench:sequential": "tsx src/run.ts --mode sequential",
     "bench:staggered": "tsx src/run.ts --mode staggered",
     "bench:burst": "tsx src/run.ts --mode burst",
+    "bench:reliability": "tsx src/run.ts --mode reliability",
     "bench:blaxel": "tsx src/run.ts --provider blaxel",
     "bench:codesandbox": "tsx src/run.ts --provider codesandbox",
     "bench:daytona": "tsx src/run.ts --provider daytona",

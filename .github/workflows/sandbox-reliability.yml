@@ -1,0 +1,147 @@
+name: Sandbox Reliability Benchmark
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      duration-seconds:
+        description: 'How long each provider job should sample'
+        required: false
+        default: '600'
+      interval-seconds:
+        description: 'Seconds between samples'
+        required: false
+        default: '30'
+      samples:
+        description: 'Optional fixed sample count; overrides duration when set'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    name: Reliability ${{ matrix.provider }}
+    runs-on: namespace-profile-default
+    timeout-minutes: 25
+    concurrency:
+      group: sandbox-reliability-${{ matrix.provider }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        provider:
+          - archil
+          - blaxel
+          - cloudflare
+          - codesandbox
+          - daytona
+          - declaw
+          - e2b
+          - hopx
+          - isorun
+          - modal
+          - northflank
+          - runloop
+          - tensorlake
+          - upstash
+          - vercel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Clear stale results from checkout
+        run: rm -rf results/
+      - name: Run reliability benchmark
+        env:
+          COMPUTESDK_API_KEY: ${{ secrets.COMPUTESDK_API_KEY }}
+          ARCHIL_API_KEY: ${{ secrets.ARCHIL_API_KEY }}
+          ARCHIL_REGION: ${{ secrets.ARCHIL_REGION }}
+          ARCHIL_DISK_ID: ${{ secrets.ARCHIL_DISK_ID }}
+          BL_API_KEY: ${{ secrets.BL_API_KEY }}
+          BL_WORKSPACE: ${{ secrets.BL_WORKSPACE }}
+          CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
+          CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
+          CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          DECLAW_API_KEY: ${{ secrets.DECLAW_API_KEY }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          HOPX_API_KEY: ${{ secrets.HOPX_API_KEY }}
+          ISORUN_API_KEY: ${{ secrets.ISORUN_API_KEY }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          NORTHFLANK_TOKEN: ${{ secrets.NORTHFLANK_TOKEN }}
+          NORTHFLANK_PROJECT_ID: ${{ secrets.NORTHFLANK_PROJECT_ID }}
+          RUNLOOP_API_KEY: ${{ secrets.RUNLOOP_API_KEY }}
+          TENSORLAKE_API_KEY: ${{ secrets.TENSORLAKE_API_KEY }}
+          UPSTASH_BOX_API_KEY: ${{ secrets.UPSTASH_BOX_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          SAMPLE_FLAG=""
+          if [ -n "${{ github.event.inputs.samples }}" ]; then
+            SAMPLE_FLAG="--samples ${{ github.event.inputs.samples }}"
+          fi
+          npm run bench:reliability -- \
+            --provider ${{ matrix.provider }} \
+            --duration-seconds ${{ github.event.inputs['duration-seconds'] || '600' }} \
+            --interval-seconds ${{ github.event.inputs['interval-seconds'] || '30' }} \
+            $SAMPLE_FLAG
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-reliability-${{ matrix.provider }}
+          path: results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  collect:
+    name: Collect Reliability Results
+    runs-on: namespace-profile-default
+    needs: bench
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: sandbox-reliability-*
+      - name: Merge results
+        run: npx tsx src/merge-results.ts --input artifacts --mode sandbox-reliability
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/sandbox-reliability/
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update sandbox reliability results [skip ci]"
+
+          branch="${GITHUB_REF#refs/heads/}"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "${branch}"
+            git rebase "origin/${branch}" || { git rebase --abort; exit 1; }
+            if git push origin "HEAD:${branch}"; then
+              echo "Pushed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); will rebase and retry"
+          done
+          echo "Failed to push after multiple attempts" >&2
+          exit 1
