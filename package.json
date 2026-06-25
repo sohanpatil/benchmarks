@@ -79,7 +79,7 @@
     "@computesdk/blaxel": "^1.6.7",
     "@computesdk/browserbase": "^0.3.0",
     "@computesdk/browseruse": "^0.2.0",
-    "@computesdk/cloudflare": "^1.6.4",
+    "@computesdk/cloudflare": "^1.6.13",
     "@computesdk/codesandbox": "^1.5.42",
     "@computesdk/collimate": "^0.1.0",
     "@computesdk/daytona": "^1.7.22",
