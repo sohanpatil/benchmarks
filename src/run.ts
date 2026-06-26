@@ -9,7 +9,13 @@ import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import { runBrowserBenchmark, writeBrowserResultsJson } from './browser/benchmark.js';
-import { runThroughputBenchmark, writeThroughputResultsJson } from './browser/throughput-benchmark.js';
+import {
+  emptySummary,
+  runThroughputBenchmark,
+  runThroughputIteration,
+  summarizeIterations,
+  writeThroughputResultsJson,
+} from './browser/throughput-benchmark.js';
 import { printResultsTable, writeResultsJson } from './sandbox/table.js';
 import { providers } from './sandbox/providers.js';
 import { storageProviders } from './storage/providers.js';
@@ -22,7 +28,7 @@ import { computeThroughputCompositeScores } from './browser/throughput-scoring.j
 import type { BenchmarkResult, BenchmarkMode } from './sandbox/types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
 import type { BrowserBenchmarkResult } from './browser/types.js';
-import type { ThroughputBenchmarkResult } from './browser/throughput-types.js';
+import type { ThroughputBenchmarkResult, ThroughputTimingResult } from './browser/throughput-types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -227,26 +233,92 @@ async function runBrowser(toRun: typeof browserProviders): Promise<void> {
 }
 
 async function runBrowserThroughput(toRun: typeof throughputProviders): Promise<void> {
-  // Throughput sessions are ~12s each, so we use a much lower default than
-  // the global iterations CLI value. Only override when --iterations was
-  // explicitly passed; otherwise let runThroughputBenchmark apply its own
-  // default (10 sessions per provider).
+  // Only override when --iterations was explicitly passed; otherwise let
+  // runThroughputBenchmark apply its own default (100 sessions per provider).
   const throughputIterations = iterationsArg ? iterations : undefined;
+  const iterationsToRun = throughputIterations ?? 100;
 
   console.log('\n' + '='.repeat(70));
   console.log('  MODE: BROWSER THROUGHPUT');
-  console.log(`  Iterations per provider: ${throughputIterations ?? 10}`);
+  console.log(`  Iterations per provider: ${iterationsToRun}`);
   console.log('='.repeat(70));
 
   const results: ThroughputBenchmarkResult[] = [];
 
-  for (const providerConfig of toRun) {
-    const result = await runThroughputBenchmark(
-      throughputIterations !== undefined
-        ? { ...providerConfig, iterations: throughputIterations }
-        : providerConfig,
-    );
-    results.push(result);
+  if (providerFilter || toRun.length === 1) {
+    for (const providerConfig of toRun) {
+      const result = await runThroughputBenchmark(
+        throughputIterations !== undefined
+          ? { ...providerConfig, iterations: throughputIterations }
+          : providerConfig,
+      );
+      results.push(result);
+    }
+  } else {
+    const resultByProvider = new Map<string, ThroughputBenchmarkResult>();
+    const active: Array<{
+      name: string;
+      provider: any;
+      timeout: number;
+      sessionCreateOptions: Record<string, unknown>;
+      iterations: ThroughputTimingResult[];
+    }> = [];
+
+    for (const providerConfig of toRun) {
+      const missingVars = providerConfig.requiredEnvVars.filter(v => !process.env[v]);
+      if (missingVars.length > 0) {
+        resultByProvider.set(providerConfig.name, {
+          provider: providerConfig.name,
+          mode: 'browser-throughput',
+          iterations: [],
+          summary: emptySummary(),
+          skipped: true,
+          skipReason: `Missing: ${missingVars.join(', ')}`,
+        });
+        continue;
+      }
+
+      active.push({
+        name: providerConfig.name,
+        provider: providerConfig.createBrowserProvider(),
+        timeout: providerConfig.timeout ?? 120_000,
+        sessionCreateOptions: providerConfig.sessionCreateOptions ?? {},
+        iterations: [],
+      });
+    }
+
+    console.log(`\n--- Interleaved Throughput Benchmark (${iterationsToRun} rounds × ${active.length} providers) ---`);
+    console.log('Provider      Sess  Create   Connect  Task     Release  Total    APS    Actions');
+    console.log('────────────  ────  ───────  ───────  ───────  ───────  ───────  ─────  ───────');
+
+    for (let i = 0; i < iterationsToRun; i++) {
+      for (const state of active) {
+        const result = await runThroughputIteration(state.provider, state.timeout, state.sessionCreateOptions);
+        state.iterations.push(result);
+
+        const pad = (n: number) => `${Math.round(n)}ms`.padStart(7);
+        const aps = result.actionsPerSecond.toFixed(1).padStart(5);
+        const status = `${result.actionsCompleted}/50`;
+        const errSuffix = result.error ? `  ✗ ${result.error.slice(0, 50)}` : '';
+        console.log(
+          `${state.name.padEnd(12)}  ${String(i + 1).padStart(4)}  ${pad(result.createMs)}  ${pad(result.connectMs)}  ${pad(result.taskMs)}  ${pad(result.releaseMs)}  ${pad(result.totalMs)}  ${aps}  ${status}${errSuffix}`,
+        );
+      }
+    }
+
+    for (const state of active) {
+      resultByProvider.set(state.name, {
+        provider: state.name,
+        mode: 'browser-throughput',
+        iterations: state.iterations,
+        summary: summarizeIterations(state.iterations),
+      });
+    }
+
+    for (const providerConfig of toRun) {
+      const result = resultByProvider.get(providerConfig.name);
+      if (result) results.push(result);
+    }
   }
 
   // Compute composite scores

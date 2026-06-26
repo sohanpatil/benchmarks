@@ -22,7 +22,7 @@ This benchmark closes that gap.
 
 ## What gets measured
 
-For each provider, the benchmark runs **N sessions** (default 10, configurable). Each session executes a fixed sequence of **50 sequential actions** end-to-end inside one running browser. We record, in order:
+For each provider, the benchmark runs **N sessions** (default 100, configurable). Each session executes a fixed sequence of **50 sequential actions** end-to-end inside one running browser. We record, in order:
 
 - Session creation time (`createMs`)
 - CDP connection time (`connectMs`)
@@ -111,6 +111,7 @@ A few deliberate choices in `runThroughputIteration`:
 - **The action index is recorded.** With 50 ordered actions per session, downstream analysis can detect if late-session actions are systematically slower than early-session ones — a useful signal for memory leaks or resource exhaustion in long-running sessions.
 - **Action timeout is 30 seconds**, applied per-action via `withTimeout`. A single slow action can't hang an entire run, and the timeout lands well above any reasonable real action duration.
 - **`page.goBack` uses `waitUntil: 'commit'`** rather than the Playwright default of `'load'`, because browsers restoring a page from the back-forward cache fire `pageshow` instead of `load` — `'load'` would hang for the full timeout on every bfcache restore. The next `waitForSelector` confirms arrival on the previous page.
+- **All-provider local runs are interleaved.** When running every throughput provider from the CLI, the runner executes one session per provider per round. This reduces time-of-run network bias compared with completing all sessions for one provider before starting the next. CI already runs providers in separate matrix jobs.
 
 ## Scoring
 
@@ -151,7 +152,7 @@ The full per-action distribution is preserved in the JSON output, so anyone who 
 # Single provider, single session — useful for development
 npm run bench:browser-throughput:browserbase -- --iterations 1
 
-# All four providers, default 10 sessions each
+# All four providers, default 100 sessions each
 npm run bench:browser-throughput
 
 # Specific provider with custom iteration count
@@ -179,7 +180,7 @@ npm run generate-browser-throughput-svg
 
 ## Scheduling
 
-The GitHub Actions workflow `browser-throughput-benchmarks.yml` runs daily at 03:00 UTC (offset from the lifecycle browser benchmark at 00:00) with 10 iterations per provider. Pull requests touching browser code run a faster 3-iteration version and post a comparison table as a PR comment.
+The GitHub Actions workflow `browser-throughput-benchmarks.yml` runs daily at 03:00 UTC (offset from the lifecycle browser benchmark at 00:00) with 100 iterations per provider. Pull requests touching browser code run a faster 3-iteration version and post a comparison table as a PR comment.
 
 ## Limitations
 

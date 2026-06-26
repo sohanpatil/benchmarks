@@ -140,7 +140,7 @@ async function runActionLoop(page: Page, results: ActionResult[]): Promise<void>
   }
 }
 
-async function runThroughputIteration(
+export async function runThroughputIteration(
   provider: any,
   timeout: number,
   sessionCreateOptions: Record<string, unknown>,
@@ -222,7 +222,7 @@ async function runThroughputIteration(
   };
 }
 
-function summarizeIterations(iterations: ThroughputTimingResult[]): ThroughputStats {
+export function summarizeIterations(iterations: ThroughputTimingResult[]): ThroughputStats {
   const createValues = iterations.map(i => i.createMs).filter(v => v > 0);
   const taskValues = iterations.map(i => i.taskMs).filter(v => v > 0);
   const totalValues = iterations.map(i => i.totalMs).filter(v => v > 0);
@@ -248,7 +248,7 @@ function summarizeIterations(iterations: ThroughputTimingResult[]): ThroughputSt
   };
 }
 
-function emptySummary(): ThroughputStats {
+export function emptySummary(): ThroughputStats {
   const empty: ThroughputStatsTriple = { median: 0, p95: 0, p99: 0 };
   const perActionType = {} as Record<ActionType, ThroughputStatsTriple>;
   for (const t of ACTION_TYPES) perActionType[t] = { ...empty };
@@ -266,7 +266,7 @@ export async function runThroughputBenchmark(
 ): Promise<ThroughputBenchmarkResult> {
   const {
     name,
-    iterations = 10,
+    iterations = 100,
     timeout = 120_000,
     requiredEnvVars,
     sessionCreateOptions = {},
