@@ -65,57 +65,57 @@
 
   <!-- Row 1 -->
   <text class="rank rank-1" x="40" y="208">1</text>
-  <text class="row provider" x="80" y="208">Kernel</text>
-  <text class="row total" x="240" y="208">56.5</text>
-  <text class="row total fast" x="360" y="208">4.38/s</text>
-  <text class="row" x="500" y="208">11.42s</text>
-  <text class="row" x="640" y="208">17.02s</text>
-  <text class="row" x="780" y="208">287ms</text>
-  <text class="row" x="920" y="208">0.36s</text>
-  <text class="row" x="1040" y="208">12.34s</text>
+  <text class="row provider" x="80" y="208">Browserbase</text>
+  <text class="row total" x="240" y="208">50.6</text>
+  <text class="row total medium" x="360" y="208">3.41/s</text>
+  <text class="row" x="500" y="208">14.68s</text>
+  <text class="row" x="640" y="208">16.00s</text>
+  <text class="row" x="780" y="208">195ms</text>
+  <text class="row" x="920" y="208">0.22s</text>
+  <text class="row" x="1040" y="208">15.55s</text>
   <text class="row status" x="1180" y="208">10/10</text>
   <line class="divider" x1="24" y1="222" x2="1256" y2="222"/>
 
   <!-- Row 2 -->
   <text class="rank rank-2" x="40" y="252">2</text>
-  <text class="row provider" x="80" y="252">Browserbase</text>
-  <text class="row total" x="240" y="252">53.0</text>
-  <text class="row total fast" x="360" y="252">3.79/s</text>
-  <text class="row" x="500" y="252">13.21s</text>
-  <text class="row" x="640" y="252">16.66s</text>
-  <text class="row" x="780" y="252">195ms</text>
-  <text class="row" x="920" y="252">0.22s</text>
-  <text class="row" x="1040" y="252">13.89s</text>
+  <text class="row provider" x="80" y="252">Hyperbrowser</text>
+  <text class="row total" x="240" y="252">45.0</text>
+  <text class="row total medium" x="360" y="252">3.04/s</text>
+  <text class="row" x="500" y="252">16.45s</text>
+  <text class="row" x="640" y="252">19.91s</text>
+  <text class="row" x="780" y="252">463ms</text>
+  <text class="row" x="920" y="252">0.30s</text>
+  <text class="row" x="1040" y="252">17.08s</text>
   <text class="row status" x="1180" y="252">10/10</text>
   <line class="divider" x1="24" y1="266" x2="1256" y2="266"/>
 
   <!-- Row 3 -->
   <text class="rank rank-3" x="40" y="296">3</text>
-  <text class="row provider" x="80" y="296">Hyperbrowser</text>
-  <text class="row total" x="240" y="296">51.0</text>
-  <text class="row total fast" x="360" y="296">3.51/s</text>
-  <text class="row" x="500" y="296">14.25s</text>
-  <text class="row" x="640" y="296">16.42s</text>
-  <text class="row" x="780" y="296">404ms</text>
-  <text class="row" x="920" y="296">0.31s</text>
-  <text class="row" x="1040" y="296">14.83s</text>
+  <text class="row provider" x="80" y="296">Kernel</text>
+  <text class="row total" x="240" y="296">44.9</text>
+  <text class="row total fast" x="360" y="296">3.85/s</text>
+  <text class="row" x="500" y="296">13.12s</text>
+  <text class="row" x="640" y="296">29.10s</text>
+  <text class="row" x="780" y="296">329ms</text>
+  <text class="row" x="920" y="296">0.47s</text>
+  <text class="row" x="1040" y="296">15.63s</text>
   <text class="row status" x="1180" y="296">10/10</text>
   <line class="divider" x1="24" y1="310" x2="1256" y2="310"/>
 
   <!-- Row 4 -->
   <text class="rank" x="40" y="340">4</text>
   <text class="row provider" x="80" y="340">Steel</text>
-  <text class="row total" x="240" y="340">25.1</text>
-  <text class="row total slow" x="360" y="340">1.89/s</text>
-  <text class="row" x="500" y="340">26.54s</text>
-  <text class="row" x="640" y="340">31.19s</text>
-  <text class="row" x="780" y="340">586ms</text>
-  <text class="row" x="920" y="340">0.34s</text>
-  <text class="row" x="1040" y="340">27.82s</text>
+  <text class="row total" x="240" y="340">21.1</text>
+  <text class="row total slow" x="360" y="340">1.59/s</text>
+  <text class="row" x="500" y="340">31.49s</text>
+  <text class="row" x="640" y="340">41.70s</text>
+  <text class="row" x="780" y="340">615ms</text>
+  <text class="row" x="920" y="340">0.59s</text>
+  <text class="row" x="1040" y="340">35.38s</text>
   <text class="row status" x="1180" y="340">10/10</text>
 
   <!-- Timestamp -->
-  <text class="timestamp" x="1256" y="400" text-anchor="end">Last updated: Jun 25, 2026, 04:34 AM UTC</text>
+  <text class="timestamp" x="1256" y="400" text-anchor="end">Last updated: Jun 26, 2026, 04:38 AM UTC</text>
 
   <!-- Footnote -->
   <text class="timestamp" x="24" y="414">Each session runs 50 sequential actions (navigate, wait, screenshot, textContent, click, goBack) on Wikipedia. Higher APS is better.</text>
