@@ -14,6 +14,7 @@ import { northflank } from '@computesdk/northflank';
 // import { railway } from '@computesdk/railway';
 import { runloop } from '@computesdk/runloop';
 import { sprites } from '@computesdk/sprites';
+// import { superserve } from '@computesdk/superserve';
 import { tensorlake } from '@computesdk/tensorlake'
 import { upstash } from '@computesdk/upstash';
 import { vercel } from '@computesdk/vercel';
@@ -116,6 +117,11 @@ export const providers: ProviderConfig[] = [
     requiredEnvVars: ['SPRITES_TOKEN'],
     createCompute: () => sprites({ apiKey: process.env.SPRITES_TOKEN! }),
   },
+  // {
+  //   name: 'superserve',
+  //   requiredEnvVars: ['SUPERSERVE_API_KEY'],
+  //   createCompute: () => superserve({ apiKey: process.env.SUPERSERVE_API_KEY! }),
+  // },
   {
     name: 'tensorlake',
     requiredEnvVars: ['TENSORLAKE_API_KEY'],
