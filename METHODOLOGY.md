@@ -185,6 +185,16 @@ npm run bench:sandbox:resources -- --iterations 3
 
 This benchmark helps explain what a provider's advertised resources mean in practice, including visible CPUs, cgroup CPU quota, memory limit/current usage, disk free space, kernel/distro, `ulimit` values, process count, and availability of common developer tools.
 
+### Sandbox Heavy Build
+
+The heavy build benchmark is a separate opt-in sandbox workload benchmark. It generates a portable C project inside a fresh sandbox and compiles it with `make -j$(nproc)` capped at 32 jobs.
+
+```bash
+npm run bench:sandbox:heavy-build -- --iterations 3
+```
+
+This benchmark exercises sustained CPU, compiler/toolchain availability, process scheduling, memory pressure, and filesystem object generation without depending on external source downloads.
+
 ## Test Configuration
 
 ### Daily Automated Runs

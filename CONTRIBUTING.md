@@ -95,6 +95,9 @@ npm run bench:sandbox:npm-install -- --iterations 3
 # Inspect sandbox CPU/memory/disk/process resources
 npm run bench:sandbox:resources -- --iterations 3
 
+# Run sandbox heavy C build benchmark
+npm run bench:sandbox:heavy-build -- --iterations 1
+
 # Run a single provider
 npm run bench -- --provider e2b
 
