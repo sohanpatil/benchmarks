@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { Storage } from '@storagesdk/core';
 import { withTimeout } from '../util/timeout.js';
 import type { StorageProviderConfig, StorageBenchmarkResult, StorageTimingResult } from './types.js';
 
@@ -38,8 +39,7 @@ function randomId(): string {
 
 
 async function runStorageIteration(
-  storage: any,
-  bucket: string,
+  storage: Storage,
   testData: Buffer,
   timeout: number
 ): Promise<StorageTimingResult> {
@@ -50,16 +50,16 @@ async function runStorageIteration(
     // Upload timing
     const uploadStart = performance.now();
     await withTimeout(
-      storage.upload(bucket, key, testData),
+      storage.upload(key, testData),
       timeout,
       'Upload timed out'
     );
     const uploadMs = performance.now() - uploadStart;
 
-    // Download timing
+    // Download timing — request raw bytes so we measure a full object fetch
     const downloadStart = performance.now();
     await withTimeout(
-      storage.download(bucket, key),
+      storage.download(key, { as: 'bytes' }),
       timeout,
       'Download timed out'
     );
@@ -71,7 +71,7 @@ async function runStorageIteration(
     // Cleanup
     try {
       await withTimeout(
-        storage.delete(bucket, key),
+        storage.delete(key),
         10000,
         'Delete timed out'
       );
@@ -85,7 +85,7 @@ async function runStorageIteration(
     
     // Attempt cleanup even on failure
     try {
-      await withTimeout(storage.delete(bucket, key), 10000, 'Delete timed out');
+      await withTimeout(storage.delete(key), 10000, 'Delete timed out');
     } catch {
       // Ignore cleanup errors
     }
@@ -138,7 +138,7 @@ export async function runStorageBenchmark(config: StorageProviderConfig, fileSiz
       }
 
       try {
-        const iterationResult = await runStorageIteration(storage, bucket, testData, timeout);
+        const iterationResult = await runStorageIteration(storage, testData, timeout);
         results[iterationIndex] = iterationResult;
 
         if (workerCount === 1) {

@@ -52,6 +52,9 @@ jobs:
           - aws-s3
           - cloudflare-r2
           - tigris
+          - vercel-blob
+          - gcs
+          - azure-blob
         file_size: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.file_size != '' && fromJson(format('["{0}"]', github.event.inputs.file_size))) || fromJson('["1MB","4MB","10MB","16MB"]') }}
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +84,15 @@ jobs:
           TIGRIS_STORAGE_ACCESS_KEY_ID: ${{ secrets.TIGRIS_STORAGE_ACCESS_KEY_ID }}
           TIGRIS_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_STORAGE_SECRET_ACCESS_KEY }}
           TIGRIS_STORAGE_BUCKET: ${{ secrets.TIGRIS_STORAGE_BUCKET }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          VERCEL_BLOB_BUCKET: ${{ secrets.VERCEL_BLOB_BUCKET }}
+          GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
+          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+          GCS_CLIENT_EMAIL: ${{ secrets.GCS_CLIENT_EMAIL }}
+          GCS_PRIVATE_KEY: ${{ secrets.GCS_PRIVATE_KEY }}
+          AZURE_ACCOUNT_NAME: ${{ secrets.AZURE_ACCOUNT_NAME }}
+          AZURE_ACCOUNT_KEY: ${{ secrets.AZURE_ACCOUNT_KEY }}
+          AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
         run: |
           FILE_SIZE="${{ matrix.file_size }}"
           npm run bench -- \
@@ -88,7 +100,7 @@ jobs:
             --provider ${{ matrix.provider }} \
             --file-size $FILE_SIZE \
             --storage-concurrency ${{ (github.event_name == 'schedule' && '16') || (github.event_name == 'pull_request' && '8') || github.event.inputs.storage_concurrency || '1' }} \
-            --iterations ${{ (github.event_name == 'schedule' && '10000') || github.event.inputs.iterations || (github.event_name == 'pull_request' && '1000') || '100' }}
+            --iterations ${{ (github.event_name == 'schedule' && '10000') || github.event.inputs.iterations || (github.event_name == 'pull_request' && '100') || '100' }}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -105,6 +117,11 @@ jobs:
     if: always()
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the rebase-on-push retry below has a merge base.
+          # A shallow (depth-1) clone can make `git rebase origin/<branch>`
+          # fail when the remote has advanced past the shallow boundary.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -123,6 +140,13 @@ jobs:
           pattern: storage-results-*
       - name: Merge results
         run: npx tsx src/merge-results.ts --input artifacts --mode storage
+      - name: Ingest results to platform
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: npx tsx src/ingest.ts --type storage
       - run: npm run generate-storage-svg
       - name: Upload SVGs as artifacts
         if: github.event_name == 'pull_request'
@@ -163,7 +187,7 @@ jobs:
               body += '|---|----------|-------|----------|------------|--------|--------|\n';
 
               results.forEach((r, i) => {
-                const name = r.provider === 'aws-s3' ? 'AWS S3' : r.provider === 'cloudflare-r2' ? 'Cloudflare R2' : r.provider.charAt(0).toUpperCase() + r.provider.slice(1);
+                const name = r.provider === 'aws-s3' ? 'AWS S3' : r.provider === 'cloudflare-r2' ? 'Cloudflare R2' : r.provider === 'vercel-blob' ? 'Vercel Blob' : r.provider === 'gcs' ? 'Google Cloud Storage' : r.provider === 'azure-blob' ? 'Azure Blob Storage' : r.provider.charAt(0).toUpperCase() + r.provider.slice(1);
                 const score = r.compositeScore !== undefined ? r.compositeScore.toFixed(1) : '--';
                 const dl = (r.summary.downloadMs.median / 1000).toFixed(2) + 's';
                 const tp = r.summary.throughputMbps.median.toFixed(1) + ' Mbps';
@@ -215,4 +239,22 @@ jobs:
           git add package.json package-lock.json storage_*.svg results/storage/
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update storage benchmark results [skip ci]"
-          git push
+
+          # Remote master can advance during the run (concurrent benchmark
+          # workflows push to master too), so a plain push fails non-fast-forward.
+          # Rebase onto the latest remote and retry a few times before giving up.
+          branch="${GITHUB_REF#refs/heads/}"
+          for attempt in 1 2 3 4 5; do
+            # Rebase before each attempt (including the last) so every rebase
+            # is followed by a push — otherwise the final iteration's rebase
+            # would be wasted and a resolvable non-fast-forward could still fail.
+            git fetch origin "${branch}"
+            git rebase "origin/${branch}" || { git rebase --abort; exit 1; }
+            if git push origin "HEAD:${branch}"; then
+              echo "Pushed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); will rebase and retry"
+          done
+          echo "Failed to push after multiple attempts" >&2
+          exit 1

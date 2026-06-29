@@ -34,6 +34,12 @@ interface PricingProvider {
       cpu_per_vcpu_hr: number;
       memory_per_gib_hr: number;
       total_1vcpu_2gb_hr: number;
+      /**
+       * Optional precomputed effective cost ($/hr for 1 vCPU + 2 GB). When set,
+       * it is used directly instead of recomputing from the rates above — e.g.
+       * Modal's active-CPU estimate respecting its 0.125 physical-core minimum.
+       */
+      effective_cost_1vcpu_2gb_hr?: number;
       confidence: string;
       notes?: string;
     };
@@ -59,11 +65,15 @@ function computeEstimatedCost(provider: PricingProvider): number | null {
 
 /**
  * Get the effective cost for a provider.
- * For active-CPU providers, uses estimated 25% CPU utilization.
- * For wall-clock providers, uses the full normalized cost.
+ * Uses a precomputed effective cost when provided, otherwise the estimated
+ * active-CPU cost (10% utilization), otherwise the full wall-clock cost.
  */
 function getEffectiveCost(provider: PricingProvider): number {
-  return computeEstimatedCost(provider) ?? provider.pricing.normalized.total_1vcpu_2gb_hr;
+  return (
+    provider.pricing.normalized.effective_cost_1vcpu_2gb_hr ??
+    computeEstimatedCost(provider) ??
+    provider.pricing.normalized.total_1vcpu_2gb_hr
+  );
 }
 
 interface PricingData {
@@ -363,7 +373,7 @@ ${sponsorImages.length > 0 ? (() => {
 
   <!-- Footnotes -->
   <text class="timestamp" x="${padding}" y="${height - 38}">Eff. Cost = effective cost for 1 vCPU + 2 GB RAM / hr. Active-CPU providers (~) estimated at 10% utilization. Value Score = sqrt(benchmark x cost efficiency).</text>
-  <text class="timestamp" x="${padding}" y="${height - 24}">Active-CPU billing (Vercel, Cloudflare): CPU charged only during execution, memory always wall-clock. Wall-clock providers: full rate shown.</text>
+  <text class="timestamp" x="${padding}" y="${height - 24}">Active-CPU billing (Vercel, Cloudflare, Blaxel): CPU charged only during execution, memory always wall-clock. Wall-clock providers: full rate shown.</text>
   <text class="timestamp" x="${padding}" y="${height - 10}">Confidence: exact = official pricing page, estimated = back-calculated from bundled tier.</text>
 
 </svg>`;

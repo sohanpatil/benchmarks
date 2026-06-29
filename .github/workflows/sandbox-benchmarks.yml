@@ -53,13 +53,18 @@ jobs:
           - blaxel
           - cloudflare
           - codesandbox
+          # - collimate
           - daytona
           - declaw
           - e2b
           - hopx
+          - isorun
           - modal
-          - namespace
+          # - namespace
+          - northflank
+          # - railway
           - runloop
+          - tensorlake
           - upstash
           - vercel
     steps:
@@ -90,14 +95,21 @@ jobs:
           CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
           CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
           CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
+          # COLLIMATE_API_KEY: ${{ secrets.COLLIMATE_API_KEY }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
           DECLAW_API_KEY: ${{ secrets.DECLAW_API_KEY }}
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
           HOPX_API_KEY: ${{ secrets.HOPX_API_KEY }}
+          ISORUN_API_KEY: ${{ secrets.ISORUN_API_KEY }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-          NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+          # NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
+          NORTHFLANK_TOKEN: ${{ secrets.NORTHFLANK_TOKEN }}
+          NORTHFLANK_PROJECT_ID: ${{ secrets.NORTHFLANK_PROJECT_ID }}
+          # RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          # RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
           RUNLOOP_API_KEY: ${{ secrets.RUNLOOP_API_KEY }}
+          TENSORLAKE_API_KEY: ${{ secrets.TENSORLAKE_API_KEY }}
           UPSTASH_BOX_API_KEY: ${{ secrets.UPSTASH_BOX_API_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
@@ -128,6 +140,11 @@ jobs:
     if: always()
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the rebase-on-push retry below has a merge base.
+          # A shallow (depth-1) clone can make `git rebase origin/<branch>`
+          # fail when the remote has advanced past the shallow boundary.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -146,6 +163,13 @@ jobs:
           pattern: results-*
       - name: Merge results
         run: npx tsx src/merge-results.ts --input artifacts
+      - name: Ingest results to platform
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: npx tsx src/ingest.ts --type sandbox
       - run: npm run generate-svg
       - run: npm run generate-pricing-svg
       - name: Upload SVGs as artifacts
@@ -245,4 +269,22 @@ jobs:
           git add package.json package-lock.json results.svg *_tti.svg pricing.svg results/
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update benchmark results [skip ci]"
-          git push
+
+          # Remote master can advance during the run (concurrent runs / other
+          # commits), so a plain push fails non-fast-forward. Rebase onto the
+          # latest remote and retry a few times before giving up.
+          branch="${GITHUB_REF#refs/heads/}"
+          for attempt in 1 2 3 4 5; do
+            # Rebase before each attempt (including the last) so every rebase
+            # is followed by a push — otherwise the final iteration's rebase
+            # would be wasted and a resolvable non-fast-forward could still fail.
+            git fetch origin "${branch}"
+            git rebase "origin/${branch}" || { git rebase --abort; exit 1; }
+            if git push origin "HEAD:${branch}"; then
+              echo "Pushed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); will rebase and retry"
+          done
+          echo "Failed to push after multiple attempts" >&2
+          exit 1
