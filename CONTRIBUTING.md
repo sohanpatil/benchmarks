@@ -92,6 +92,9 @@ npm run bench:sandbox:git-clone -- --iterations 3
 # Run sandbox npm install benchmark
 npm run bench:sandbox:npm-install -- --iterations 3
 
+# Inspect sandbox CPU/memory/disk/process resources
+npm run bench:sandbox:resources -- --iterations 3
+
 # Run a single provider
 npm run bench -- --provider e2b
 

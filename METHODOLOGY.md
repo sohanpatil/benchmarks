@@ -175,6 +175,16 @@ npm run bench:sandbox:npm-install -- --iterations 10
 
 This benchmark exercises package manager availability, npm registry access, TLS/DNS, filesystem writes, and process execution.
 
+### Sandbox Resources
+
+The resources benchmark is a separate opt-in sandbox observation benchmark. It creates a fresh sandbox and captures CPU, memory, disk, OS, cgroup, process-limit, and tool availability metadata without assigning a performance score.
+
+```bash
+npm run bench:sandbox:resources -- --iterations 3
+```
+
+This benchmark helps explain what a provider's advertised resources mean in practice, including visible CPUs, cgroup CPU quota, memory limit/current usage, disk free space, kernel/distro, `ulimit` values, process count, and availability of common developer tools.
+
 ## Test Configuration
 
 ### Daily Automated Runs

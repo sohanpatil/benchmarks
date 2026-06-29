@@ -14,6 +14,7 @@
     "bench:sandbox:filesystem": "tsx src/run.ts --mode sandbox-filesystem",
     "bench:sandbox:git-clone": "tsx src/run.ts --mode sandbox-git-clone",
     "bench:sandbox:npm-install": "tsx src/run.ts --mode sandbox-npm-install",
+    "bench:sandbox:resources": "tsx src/run.ts --mode sandbox-resources",
     "bench:blaxel": "tsx src/run.ts --provider blaxel",
     "bench:codesandbox": "tsx src/run.ts --provider codesandbox",
     "bench:daytona": "tsx src/run.ts --provider daytona",

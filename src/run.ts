@@ -9,6 +9,7 @@ import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runFilesystemBenchmark, writeFilesystemResultsJson } from './sandbox/filesystem.js';
 import { runGitCloneBenchmark, writeGitCloneResultsJson } from './sandbox/git-clone.js';
 import { runNpmInstallBenchmark, writeNpmInstallResultsJson } from './sandbox/npm-install.js';
+import { runResourcesBenchmark, writeResourcesResultsJson } from './sandbox/resources.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import {
@@ -77,7 +78,7 @@ function normalizeSandboxTtiMode(mode: string): SandboxTtiMode | undefined {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] | ['sandbox-filesystem'] | ['sandbox-git-clone'] | ['sandbox-npm-install'] {
+function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] | ['sandbox-filesystem'] | ['sandbox-git-clone'] | ['sandbox-npm-install'] | ['sandbox-resources'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'snapshot-fork') return ['snapshot-fork'];
@@ -86,6 +87,7 @@ function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | [
   if (rawMode === 'sandbox-filesystem') return ['sandbox-filesystem'];
   if (rawMode === 'sandbox-git-clone') return ['sandbox-git-clone'];
   if (rawMode === 'sandbox-npm-install') return ['sandbox-npm-install'];
+  if (rawMode === 'sandbox-resources') return ['sandbox-resources'];
   const sandboxTtiMode = normalizeSandboxTtiMode(rawMode);
   if (!sandboxTtiMode) {
     console.error(`Unknown mode: ${rawMode}`);
@@ -95,7 +97,7 @@ function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | [
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-throughput' | 'sandbox-filesystem' | 'sandbox-git-clone' | 'sandbox-npm-install'): string {
+function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-throughput' | 'sandbox-filesystem' | 'sandbox-git-clone' | 'sandbox-npm-install' | 'sandbox-resources'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
@@ -106,6 +108,7 @@ function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-th
     case 'sandbox-filesystem': return 'sandbox-filesystem';
     case 'sandbox-git-clone': return 'sandbox-git-clone';
     case 'sandbox-npm-install': return 'sandbox-npm-install';
+    case 'sandbox-resources': return 'sandbox-resources';
     default: return `${m}_tti`;
   }
 }
@@ -400,6 +403,56 @@ async function runSandboxNpmInstall(toRun: typeof providers): Promise<void> {
   const latestPath = path.join(resultsDir, 'latest.json');
   fs.copyFileSync(outPath, latestPath);
   console.log(`Copied latest: ${latestPath}`);
+}
+
+async function runSandboxResources(toRun: typeof providers): Promise<void> {
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: SANDBOX RESOURCES');
+  console.log(`  Iterations per provider: ${iterations}`);
+  console.log('='.repeat(70));
+
+  const results = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runResourcesBenchmark({ ...providerConfig, iterations });
+    results.push(result);
+  }
+
+  console.log('\n--- Sandbox Resources Benchmark Results ---');
+  for (const r of results) {
+    if (r.skipped) {
+      console.log(`${r.provider}: SKIPPED (${r.skipReason})`);
+      continue;
+    }
+    const latest = [...r.iterations].reverse().find(i => !i.error);
+    const ok = r.iterations.filter(i => !i.error).length;
+    const total = r.iterations.length;
+    console.log(`${r.provider}:`);
+    if (latest) {
+      const effectiveCpu = latest.cpu?.cgroupEffectiveCpus;
+      const cpu = effectiveCpu ? `${effectiveCpu.toFixed(2)} effective CPUs` : `${latest.cpu?.nproc ?? '--'} visible CPUs`;
+      const memoryBytes = latest.memory?.cgroupMaxBytes ?? (latest.memory?.memTotalKb ? latest.memory.memTotalKb * 1024 : undefined);
+      console.log(`  ${cpu}, memory ${formatBytes(memoryBytes)}, root disk free ${formatBytes(latest.disk?.rootAvailableBytes)} (${ok}/${total} OK)`);
+    } else {
+      console.log(`  No successful observations (${ok}/${total} OK)`);
+    }
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const resultsDir = path.resolve(__dirname, `../results/${modeToDir('sandbox-resources')}`);
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeResourcesResultsJson(results, outPath);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
+function formatBytes(bytes: number | null | undefined): string {
+  if (!bytes || !Number.isFinite(bytes)) return '--';
+  return `${(bytes / 1024 / 1024).toFixed(0)} MiB`;
 }
 
 async function runBrowser(toRun: typeof browserProviders): Promise<void> {
@@ -712,6 +765,22 @@ async function main() {
 
     await runSandboxNpmInstall(toRun);
     console.log('\nAll sandbox npm install tests complete.');
+    return;
+  }
+
+  if (modes[0] === 'sandbox-resources') {
+    const toRun = providerFilter
+      ? providers.filter(p => p.name === providerFilter)
+      : providers;
+
+    if (toRun.length === 0) {
+      console.error(`Unknown provider: ${providerFilter}`);
+      console.error(`Available: ${providers.map(p => p.name).join(', ')}`);
+      process.exit(1);
+    }
+
+    await runSandboxResources(toRun);
+    console.log('\nAll sandbox resource tests complete.');
     return;
   }
 
