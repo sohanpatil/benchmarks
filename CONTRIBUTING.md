@@ -86,6 +86,9 @@ npm run bench -- --mode sandbox-tti-burst --concurrency 10
 # Run sandbox filesystem IO benchmark
 npm run bench:sandbox:filesystem -- --iterations 3
 
+# Run sandbox git clone benchmark
+npm run bench:sandbox:git-clone -- --iterations 3
+
 # Run a single provider
 npm run bench -- --provider e2b
 

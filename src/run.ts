@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runFilesystemBenchmark, writeFilesystemResultsJson } from './sandbox/filesystem.js';
+import { runGitCloneBenchmark, writeGitCloneResultsJson } from './sandbox/git-clone.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import {
@@ -75,13 +76,14 @@ function normalizeSandboxTtiMode(mode: string): SandboxTtiMode | undefined {
 }
 
 /** Resolve which modes to run */
-function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] | ['sandbox-filesystem'] {
+function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] | ['sandbox-filesystem'] | ['sandbox-git-clone'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'snapshot-fork') return ['snapshot-fork'];
   if (rawMode === 'browser') return ['browser'];
   if (rawMode === 'browser-throughput') return ['browser-throughput'];
   if (rawMode === 'sandbox-filesystem') return ['sandbox-filesystem'];
+  if (rawMode === 'sandbox-git-clone') return ['sandbox-git-clone'];
   const sandboxTtiMode = normalizeSandboxTtiMode(rawMode);
   if (!sandboxTtiMode) {
     console.error(`Unknown mode: ${rawMode}`);
@@ -91,7 +93,7 @@ function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | [
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-throughput' | 'sandbox-filesystem'): string {
+function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-throughput' | 'sandbox-filesystem' | 'sandbox-git-clone'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
@@ -100,6 +102,7 @@ function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-th
     case 'snapshot-fork': return 'snapshot-fork';
     case 'browser-throughput': return 'browser-throughput';
     case 'sandbox-filesystem': return 'sandbox-filesystem';
+    case 'sandbox-git-clone': return 'sandbox-git-clone';
     default: return `${m}_tti`;
   }
 }
@@ -314,6 +317,44 @@ async function runSandboxFilesystem(toRun: typeof providers): Promise<void> {
 
   const outPath = path.join(resultsDir, `${timestamp}.json`);
   await writeFilesystemResultsJson(results, outPath);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
+async function runSandboxGitClone(toRun: typeof providers): Promise<void> {
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: SANDBOX GIT CLONE');
+  console.log(`  Iterations per provider: ${iterations}`);
+  console.log('='.repeat(70));
+
+  const results = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runGitCloneBenchmark({ ...providerConfig, iterations });
+    results.push(result);
+  }
+
+  console.log('\n--- Sandbox Git Clone Benchmark Results ---');
+  for (const r of results) {
+    if (r.skipped) {
+      console.log(`${r.provider}: SKIPPED (${r.skipReason})`);
+      continue;
+    }
+    const ok = r.iterations.filter(i => !i.error).length;
+    const total = r.iterations.length;
+    console.log(`${r.provider}:`);
+    console.log(`  Clone: ${(r.summary.cloneMs.median / 1000).toFixed(2)}s median`);
+    console.log(`  Checkout: ${r.summary.fileCount.median.toFixed(0)} files, ${(r.summary.checkoutBytes.median / 1024 / 1024).toFixed(1)} MiB (${ok}/${total} OK)`);
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const resultsDir = path.resolve(__dirname, `../results/${modeToDir('sandbox-git-clone')}`);
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeGitCloneResultsJson(results, outPath);
 
   const latestPath = path.join(resultsDir, 'latest.json');
   fs.copyFileSync(outPath, latestPath);
@@ -598,6 +639,22 @@ async function main() {
 
     await runSandboxFilesystem(toRun);
     console.log('\nAll sandbox filesystem tests complete.');
+    return;
+  }
+
+  if (modes[0] === 'sandbox-git-clone') {
+    const toRun = providerFilter
+      ? providers.filter(p => p.name === providerFilter)
+      : providers;
+
+    if (toRun.length === 0) {
+      console.error(`Unknown provider: ${providerFilter}`);
+      console.error(`Available: ${providers.map(p => p.name).join(', ')}`);
+      process.exit(1);
+    }
+
+    await runSandboxGitClone(toRun);
+    console.log('\nAll sandbox git clone tests complete.');
     return;
   }
 

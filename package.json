@@ -12,6 +12,7 @@
     "bench:sandbox:tti-staggered": "tsx src/run.ts --mode sandbox-tti-staggered",
     "bench:sandbox:tti-burst": "tsx src/run.ts --mode sandbox-tti-burst",
     "bench:sandbox:filesystem": "tsx src/run.ts --mode sandbox-filesystem",
+    "bench:sandbox:git-clone": "tsx src/run.ts --mode sandbox-git-clone",
     "bench:blaxel": "tsx src/run.ts --provider blaxel",
     "bench:codesandbox": "tsx src/run.ts --provider codesandbox",
     "bench:daytona": "tsx src/run.ts --provider daytona",

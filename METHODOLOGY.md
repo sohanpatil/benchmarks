@@ -155,6 +155,16 @@ npm run bench:sandbox:filesystem -- --iterations 10
 
 This benchmark is intentionally separate from TTI so filesystem performance can be compared directly without changing historical startup scoring.
 
+### Sandbox Git Clone
+
+The git clone benchmark is a separate opt-in sandbox workload benchmark. It creates a fresh sandbox, runs a shallow clone of the benchmark repository, records the git version and HEAD SHA, and counts files and checkout bytes.
+
+```bash
+npm run bench:sandbox:git-clone -- --iterations 10
+```
+
+This benchmark exercises git availability, outbound network, TLS/DNS, process execution, and filesystem writes as one real developer workflow.
+
 ## Test Configuration
 
 ### Daily Automated Runs
