@@ -1,6 +1,8 @@
 import { browserbase } from '@computesdk/browserbase';
+import { browseruse } from '@computesdk/browseruse';
 import { hyperbrowser } from '@computesdk/hyperbrowser';
 import { kernel } from '@computesdk/kernel';
+import { notte } from '@computesdk/notte';
 import { steel } from '@computesdk/steel';
 import type { BrowserProviderConfig } from './types.js';
 
@@ -20,6 +22,13 @@ export const browserProviders: BrowserProviderConfig[] = [
     sessionCreateOptions: { region: 'us-east-1' },
   },
   {
+    name: 'browseruse',
+    requiredEnvVars: ['BROWSER_USE_API_KEY'],
+    createBrowserProvider: () => browseruse({
+      apiKey: process.env.BROWSER_USE_API_KEY!
+    }),
+  },
+  {
     name: 'hyperbrowser',
     requiredEnvVars: ['HYPERBROWSER_API_KEY'],
     createBrowserProvider: () => hyperbrowser({
@@ -32,6 +41,13 @@ export const browserProviders: BrowserProviderConfig[] = [
     requiredEnvVars: ['KERNEL_API_KEY'],
     createBrowserProvider: () => kernel({
       apiKey: process.env.KERNEL_API_KEY!
+    }),
+  },
+  {
+    name: 'notte',
+    requiredEnvVars: ['NOTTE_API_KEY'],
+    createBrowserProvider: () => notte({
+      apiKey: process.env.NOTTE_API_KEY!
     }),
   },
   {

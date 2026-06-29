@@ -15,7 +15,7 @@ on:
       iterations:
         description: 'Iterations per provider (sessions)'
         required: false
-        default: '10'
+        default: '100'
 
 concurrency:
   group: browser-throughput-benchmarks
@@ -64,7 +64,7 @@ jobs:
           npm run bench -- \
             --mode browser-throughput \
             --provider ${{ matrix.provider }} \
-            --iterations ${{ github.event_name == 'pull_request' && '3' || github.event.inputs.iterations || '10' }}
+            --iterations ${{ github.event_name == 'pull_request' && '3' || github.event.inputs.iterations || '100' }}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

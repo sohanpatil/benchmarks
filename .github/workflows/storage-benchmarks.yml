@@ -52,6 +52,9 @@ jobs:
           - aws-s3
           - cloudflare-r2
           - tigris
+          - vercel-blob
+          - gcs
+          - azure-blob
         file_size: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.file_size != '' && fromJson(format('["{0}"]', github.event.inputs.file_size))) || (github.event_name == 'pull_request' && fromJson('["1MB"]')) || fromJson('["1MB","4MB","10MB","16MB"]') }}
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +84,15 @@ jobs:
           TIGRIS_STORAGE_ACCESS_KEY_ID: ${{ secrets.TIGRIS_STORAGE_ACCESS_KEY_ID }}
           TIGRIS_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_STORAGE_SECRET_ACCESS_KEY }}
           TIGRIS_STORAGE_BUCKET: ${{ secrets.TIGRIS_STORAGE_BUCKET }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          VERCEL_BLOB_BUCKET: ${{ secrets.VERCEL_BLOB_BUCKET }}
+          GCS_PROJECT_ID: ${{ secrets.GCS_PROJECT_ID }}
+          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+          GCS_CLIENT_EMAIL: ${{ secrets.GCS_CLIENT_EMAIL }}
+          GCS_PRIVATE_KEY: ${{ secrets.GCS_PRIVATE_KEY }}
+          AZURE_ACCOUNT_NAME: ${{ secrets.AZURE_ACCOUNT_NAME }}
+          AZURE_ACCOUNT_KEY: ${{ secrets.AZURE_ACCOUNT_KEY }}
+          AZURE_CONTAINER: ${{ secrets.AZURE_CONTAINER }}
         run: |
           FILE_SIZE="${{ matrix.file_size }}"
           npm run bench -- \
@@ -88,7 +100,7 @@ jobs:
             --provider ${{ matrix.provider }} \
             --file-size $FILE_SIZE \
             --storage-concurrency ${{ (github.event_name == 'schedule' && '16') || (github.event_name == 'pull_request' && '8') || github.event.inputs.storage_concurrency || '1' }} \
-            --iterations ${{ (github.event_name == 'schedule' && '10000') || github.event.inputs.iterations || (github.event_name == 'pull_request' && '1000') || '100' }}
+            --iterations ${{ (github.event_name == 'schedule' && '10000') || github.event.inputs.iterations || (github.event_name == 'pull_request' && '100') || '100' }}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -265,7 +277,7 @@ jobs:
               body += '|---|----------|-------|----------|------------|--------|--------|\n';
 
               results.forEach((r, i) => {
-                const name = r.provider === 'aws-s3' ? 'AWS S3' : r.provider === 'cloudflare-r2' ? 'Cloudflare R2' : r.provider.charAt(0).toUpperCase() + r.provider.slice(1);
+                const name = r.provider === 'aws-s3' ? 'AWS S3' : r.provider === 'cloudflare-r2' ? 'Cloudflare R2' : r.provider === 'vercel-blob' ? 'Vercel Blob' : r.provider === 'gcs' ? 'Google Cloud Storage' : r.provider === 'azure-blob' ? 'Azure Blob Storage' : r.provider.charAt(0).toUpperCase() + r.provider.slice(1);
                 const score = r.compositeScore !== undefined ? r.compositeScore.toFixed(1) : '--';
                 const dl = (r.summary.downloadMs.median / 1000).toFixed(2) + 's';
                 const tp = r.summary.throughputMbps.median.toFixed(1) + ' Mbps';

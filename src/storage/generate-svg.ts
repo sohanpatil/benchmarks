@@ -64,6 +64,9 @@ function getArgValue(args: string[], flag: string): string | undefined {
 function formatProviderName(s: string): string {
   if (s === 'aws-s3') return 'AWS S3';
   if (s === 'cloudflare-r2') return 'Cloudflare R2';
+  if (s === 'vercel-blob') return 'Vercel Blob';
+  if (s === 'gcs') return 'Google Cloud Storage';
+  if (s === 'azure-blob') return 'Azure Blob Storage';
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 

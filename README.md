@@ -18,6 +18,10 @@
 
 ![Browser Sessions](./browser.svg)
 
+### [Browser Step Throughput](#browser-step-throughput)
+
+![Browser Sessions](./browser-throughput.svg)
+
 ### [Object Storage](#object-storage)
 
 ![Object Storage — 10MB](./storage_10mb.svg)
