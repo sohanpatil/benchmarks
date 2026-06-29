@@ -1,4 +1,5 @@
 import { browserbase } from '@computesdk/browserbase';
+import { browseruse } from '@computesdk/browseruse';
 import { hyperbrowser } from '@computesdk/hyperbrowser';
 import { kernel } from '@computesdk/kernel';
 import { notte } from '@computesdk/notte';
@@ -19,6 +20,13 @@ export const browserProviders: BrowserProviderConfig[] = [
       projectId: process.env.BROWSERBASE_PROJECT_ID!,
     }),
     sessionCreateOptions: { region: 'us-east-1' },
+  },
+  {
+    name: 'browseruse',
+    requiredEnvVars: ['BROWSER_USE_API_KEY'],
+    createBrowserProvider: () => browseruse({
+      apiKey: process.env.BROWSER_USE_API_KEY!
+    }),
   },
   {
     name: 'hyperbrowser',
