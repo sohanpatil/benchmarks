@@ -165,6 +165,16 @@ npm run bench:sandbox:git-clone -- --iterations 10
 
 This benchmark exercises git availability, outbound network, TLS/DNS, process execution, and filesystem writes as one real developer workflow.
 
+### Sandbox npm Install
+
+The npm install benchmark is a separate opt-in sandbox workload benchmark. It creates a fresh sandbox, writes a small pinned JavaScript project, runs `npm install --ignore-scripts --no-audit --no-fund`, and records install time, Node/npm versions, `node_modules` file count, and `node_modules` byte size.
+
+```bash
+npm run bench:sandbox:npm-install -- --iterations 10
+```
+
+This benchmark exercises package manager availability, npm registry access, TLS/DNS, filesystem writes, and process execution.
+
 ## Test Configuration
 
 ### Daily Automated Runs
