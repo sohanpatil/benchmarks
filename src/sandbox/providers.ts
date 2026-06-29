@@ -121,6 +121,8 @@ export const providers: ProviderConfig[] = [
     name: 'superserve',
     requiredEnvVars: ['SUPERSERVE_API_KEY'],
     createCompute: () => superserve({ apiKey: process.env.SUPERSERVE_API_KEY! }),
+    // Default template (superserve/base) has no Node; the `node -v` readiness probe needs it.
+    sandboxOptions: { templateId: 'superserve/node-22' },
   },
   {
     name: 'tensorlake',
