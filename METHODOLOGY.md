@@ -77,7 +77,7 @@ We run three independent TTI tests daily, each measuring a different aspect of p
 Sandboxes are created one at a time. Each sandbox is created, tested, and destroyed before the next begins.
 
 ```bash
-npm run bench:sequential -- --iterations 100
+npm run bench:sandbox:tti-sequential -- --iterations 100
 ```
 
 | Parameter | Value |
@@ -92,7 +92,7 @@ This is the baseline measurement — isolated cold-start performance with no con
 Sandboxes are launched with a fixed delay between each, ramping up concurrent load gradually.
 
 ```bash
-npm run bench:staggered -- --concurrency 100 --stagger-delay 200
+npm run bench:sandbox:tti-staggered -- --concurrency 100 --stagger-delay 200
 ```
 
 | Parameter | Default |
@@ -114,7 +114,7 @@ Each sandbox still measures its own individual TTI. Additionally, we capture a *
 All sandboxes are created simultaneously — no waiting between launches.
 
 ```bash
-npm run bench:burst -- --concurrency 100
+npm run bench:sandbox:tti-burst -- --concurrency 100
 ```
 
 | Parameter | Default |
@@ -138,12 +138,22 @@ Each sandbox still measures its own individual TTI. We also capture:
 By default, `npm run bench` runs all three tests in sequence:
 
 ```bash
-npm run bench                          # Runs sequential → staggered → burst
+npm run bench                          # Runs sandbox TTI sequential → staggered → burst
 npm run bench -- --provider e2b        # All 3 tests, single provider
-npm run bench:sequential               # Sequential only
-npm run bench:staggered                # Staggered only
-npm run bench:burst                    # Burst only
+npm run bench:sandbox:tti-sequential   # Sequential only
+npm run bench:sandbox:tti-staggered    # Staggered only
+npm run bench:sandbox:tti-burst        # Burst only
 ```
+
+### Sandbox Filesystem IO
+
+The filesystem benchmark is a separate opt-in sandbox workload benchmark. It creates a fresh sandbox, writes and reads a 64MB file, then creates, reads, and deletes 1,000 small 4KB files.
+
+```bash
+npm run bench:sandbox:filesystem -- --iterations 10
+```
+
+This benchmark is intentionally separate from TTI so filesystem performance can be compared directly without changing historical startup scoring.
 
 ## Test Configuration
 
@@ -308,9 +318,9 @@ cp env.example .env  # Add your API keys
 npm run bench
 
 # Run individual tests
-npm run bench:sequential -- --iterations 10
-npm run bench:staggered -- --concurrency 10 --stagger-delay 200
-npm run bench:burst -- --concurrency 10
+npm run bench:sandbox:tti-sequential -- --iterations 10
+npm run bench:sandbox:tti-staggered -- --concurrency 10 --stagger-delay 200
+npm run bench:sandbox:tti-burst -- --concurrency 10
 
 # Single provider
 npm run bench -- --provider e2b

@@ -27,9 +27,9 @@ on:
         type: choice
         options:
           - ''
-          - sequential
-          - staggered
-          - burst
+          - sandbox-tti-sequential
+          - sandbox-tti-staggered
+          - sandbox-tti-burst
 
 concurrency:
   group: benchmarks
@@ -196,9 +196,9 @@ jobs:
 
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const modes = [
-              { key: 'sequential_tti', label: 'Sequential' },
-              { key: 'staggered_tti', label: 'Staggered' },
-              { key: 'burst_tti', label: 'Burst' },
+              { key: 'sequential_tti', label: 'Sandbox TTI Sequential' },
+              { key: 'staggered_tti', label: 'Sandbox TTI Staggered' },
+              { key: 'burst_tti', label: 'Sandbox TTI Burst' },
             ];
             let body = '## Sandbox Benchmark Results\n\n';
             let hasResults = false;

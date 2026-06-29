@@ -80,7 +80,17 @@ function modeToDir(mode: string): string {
 
 /** Normalize mode name (concurrent -> burst) */
 function normalizeMode(mode: string): string {
-  return mode === 'concurrent' ? 'burst' : mode;
+  switch (mode) {
+    case 'sandbox-tti-sequential':
+      return 'sequential';
+    case 'sandbox-tti-staggered':
+      return 'staggered';
+    case 'concurrent':
+    case 'sandbox-tti-burst':
+      return 'burst';
+    default:
+      return mode;
+  }
 }
 
 async function main() {

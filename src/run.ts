@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
+import { runFilesystemBenchmark, writeFilesystemResultsJson } from './sandbox/filesystem.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import {
@@ -30,7 +31,7 @@ import { computeCompositeScores } from './sandbox/scoring.js';
 import { computeStorageCompositeScores } from './storage/scoring.js';
 import { computeBrowserCompositeScores } from './browser/scoring.js';
 import { computeThroughputCompositeScores } from './browser/throughput-scoring.js';
-import type { BenchmarkResult, BenchmarkMode } from './sandbox/types.js';
+import type { BenchmarkResult, SandboxTtiMode } from './sandbox/types.js';
 import type { StorageBenchmarkResult } from './storage/types.js';
 import type { SnapshotForkBenchmarkResult } from './storage/snapshot-fork-types.js';
 import type { DatasetPreset } from './storage/snapshot-fork-types.js';
@@ -56,32 +57,54 @@ function getArgValue(args: string[], flag: string): string | undefined {
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : undefined;
 }
 
+function normalizeSandboxTtiMode(mode: string): SandboxTtiMode | undefined {
+  switch (mode) {
+    case 'sequential':
+    case 'sandbox-tti-sequential':
+      return 'sequential';
+    case 'staggered':
+    case 'sandbox-tti-staggered':
+      return 'staggered';
+    case 'burst':
+    case 'concurrent':
+    case 'sandbox-tti-burst':
+      return 'burst';
+    default:
+      return undefined;
+  }
+}
+
 /** Resolve which modes to run */
-function getModesToRun(): BenchmarkMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] {
+function getModesToRun(): SandboxTtiMode[] | ['storage'] | ['snapshot-fork'] | ['browser'] | ['browser-throughput'] | ['sandbox-filesystem'] {
   if (!rawMode) return ['sequential', 'staggered', 'burst'];
   if (rawMode === 'storage') return ['storage'];
   if (rawMode === 'snapshot-fork') return ['snapshot-fork'];
   if (rawMode === 'browser') return ['browser'];
   if (rawMode === 'browser-throughput') return ['browser-throughput'];
-  const m = rawMode === 'concurrent' ? 'burst' : rawMode as BenchmarkMode;
-  return [m];
+  if (rawMode === 'sandbox-filesystem') return ['sandbox-filesystem'];
+  const sandboxTtiMode = normalizeSandboxTtiMode(rawMode);
+  if (!sandboxTtiMode) {
+    console.error(`Unknown mode: ${rawMode}`);
+    process.exit(1);
+  }
+  return [sandboxTtiMode];
 }
 
 /** Map mode to results subdirectory name */
-function modeToDir(m: BenchmarkMode | 'storage' | 'snapshot-fork' | 'browser-throughput'): string {
+function modeToDir(m: SandboxTtiMode | 'storage' | 'snapshot-fork' | 'browser-throughput' | 'sandbox-filesystem'): string {
   switch (m) {
     case 'sequential': return 'sequential_tti';
     case 'staggered': return 'staggered_tti';
     case 'burst':
-    case 'concurrent': return 'burst_tti';
     case 'storage': return 'storage';
     case 'snapshot-fork': return 'snapshot-fork';
     case 'browser-throughput': return 'browser-throughput';
+    case 'sandbox-filesystem': return 'sandbox-filesystem';
     default: return `${m}_tti`;
   }
 }
 
-async function runMode(mode: BenchmarkMode, toRun: typeof providers): Promise<void> {
+async function runMode(mode: SandboxTtiMode, toRun: typeof providers): Promise<void> {
   console.log('\n' + '='.repeat(70));
   console.log(`  MODE: ${mode.toUpperCase()}`);
   if (mode === 'sequential') {
@@ -112,8 +135,7 @@ async function runMode(mode: BenchmarkMode, toRun: typeof providers): Promise<vo
         results.push(result);
         break;
       }
-      case 'burst':
-      case 'concurrent': {
+      case 'burst': {
         const result = await runConcurrentBenchmark({ ...providerConfig, concurrency });
         results.push(result);
         break;
@@ -255,6 +277,45 @@ async function runSnapshotFork(toRun: typeof storageProviders, datasetLabel: str
   await writeSnapshotForkResultsJson(results, outPath);
 
   const latestPath = path.join(datasetDir, 'latest.json');
+  fs.copyFileSync(outPath, latestPath);
+  console.log(`Copied latest: ${latestPath}`);
+}
+
+async function runSandboxFilesystem(toRun: typeof providers): Promise<void> {
+  console.log('\n' + '='.repeat(70));
+  console.log('  MODE: SANDBOX FILESYSTEM');
+  console.log(`  Iterations per provider: ${iterations}`);
+  console.log('='.repeat(70));
+
+  const results = [];
+
+  for (const providerConfig of toRun) {
+    const result = await runFilesystemBenchmark({ ...providerConfig, iterations });
+    results.push(result);
+  }
+
+  console.log('\n--- Sandbox Filesystem Benchmark Results ---');
+  for (const r of results) {
+    if (r.skipped) {
+      console.log(`${r.provider}: SKIPPED (${r.skipReason})`);
+      continue;
+    }
+    const ok = r.iterations.filter(i => !i.error).length;
+    const total = r.iterations.length;
+    console.log(`${r.provider}:`);
+    console.log(`  Total: ${(r.summary.totalMs.median / 1000).toFixed(2)}s median`);
+    console.log(`  Large file: write ${r.summary.largeWriteMbps.median.toFixed(1)} Mbps, read ${r.summary.largeReadMbps.median.toFixed(1)} Mbps`);
+    console.log(`  Small files: create ${(r.summary.smallFileCreateMs.median / 1000).toFixed(2)}s, read ${(r.summary.smallFileReadMs.median / 1000).toFixed(2)}s, delete ${(r.summary.smallFileDeleteMs.median / 1000).toFixed(2)}s (${ok}/${total} OK)`);
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const resultsDir = path.resolve(__dirname, `../results/${modeToDir('sandbox-filesystem')}`);
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const outPath = path.join(resultsDir, `${timestamp}.json`);
+  await writeFilesystemResultsJson(results, outPath);
+
+  const latestPath = path.join(resultsDir, 'latest.json');
   fs.copyFileSync(outPath, latestPath);
   console.log(`Copied latest: ${latestPath}`);
 }
@@ -524,6 +585,22 @@ async function main() {
     return;
   }
 
+  if (modes[0] === 'sandbox-filesystem') {
+    const toRun = providerFilter
+      ? providers.filter(p => p.name === providerFilter)
+      : providers;
+
+    if (toRun.length === 0) {
+      console.error(`Unknown provider: ${providerFilter}`);
+      console.error(`Available: ${providers.map(p => p.name).join(', ')}`);
+      process.exit(1);
+    }
+
+    await runSandboxFilesystem(toRun);
+    console.log('\nAll sandbox filesystem tests complete.');
+    return;
+  }
+
   console.log('ComputeSDK Sandbox Provider Benchmarks');
   console.log(`Tests to run: ${modes.join(', ')}`);
   console.log(`Date: ${new Date().toISOString()}\n`);
@@ -540,7 +617,7 @@ async function main() {
   }
 
   for (const mode of modes) {
-    await runMode(mode as BenchmarkMode, toRun);
+    await runMode(mode as SandboxTtiMode, toRun);
   }
 
   console.log('\nAll tests complete.');

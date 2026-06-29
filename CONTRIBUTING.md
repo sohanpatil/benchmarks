@@ -75,19 +75,22 @@ cp env.example .env
 ### Running Tests Locally
 
 ```bash
-# Run all three sandbox test modes (sequential → staggered → burst)
+# Run all three sandbox TTI modes (sequential → staggered → burst)
 npm run bench
 
-# Run individual sandbox test modes
-npm run bench -- --mode sequential --iterations 10
-npm run bench -- --mode staggered --concurrency 10 --stagger-delay 200
-npm run bench -- --mode burst --concurrency 10
+# Run individual sandbox TTI modes
+npm run bench -- --mode sandbox-tti-sequential --iterations 10
+npm run bench -- --mode sandbox-tti-staggered --concurrency 10 --stagger-delay 200
+npm run bench -- --mode sandbox-tti-burst --concurrency 10
+
+# Run sandbox filesystem IO benchmark
+npm run bench:sandbox:filesystem -- --iterations 3
 
 # Run a single provider
 npm run bench -- --provider e2b
 
 # Combine flags
-npm run bench -- --provider e2b --mode sequential --iterations 5
+npm run bench -- --provider e2b --mode sandbox-tti-sequential --iterations 5
 
 # Run browser benchmarks
 npm run bench -- --mode browser
