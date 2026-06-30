@@ -68,6 +68,7 @@
     "generate-svg:staggered": "tsx src/sandbox/generate-svg.ts --mode staggered",
     "generate-svg:burst": "tsx src/sandbox/generate-svg.ts --mode burst",
     "generate-storage-svg": "tsx src/storage/generate-svg.ts",
+    "generate-snapshot-fork-svg": "tsx src/storage/generate-snapshot-fork-svg.ts",
     "generate-browser-svg": "tsx src/browser/generate-svg.ts",
     "generate-browser-throughput-svg": "tsx src/browser/generate-throughput-svg.ts",
     "generate-pricing-svg": "tsx src/sandbox/generate-pricing-svg.ts"

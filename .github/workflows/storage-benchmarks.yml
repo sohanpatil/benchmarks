@@ -9,7 +9,7 @@ on:
       - 'src/merge-results.ts'
       - 'package.json'
   schedule:
-    - cron: '0 6 * * 0' # Weekly on Sunday at 6am UTC
+    - cron: '0 6 * * *' # Daily at 6am UTC
   workflow_dispatch:
     inputs:
       iterations:
@@ -172,7 +172,7 @@ jobs:
             --mode snapshot-fork \
             --provider ${{ matrix.provider }} \
             --dataset small \
-            --iterations ${{ (github.event_name == 'schedule' && '5') || (github.event_name == 'pull_request' && '1') || '3' }}
+            --iterations ${{ (github.event_name == 'schedule' && '100') || (github.event_name == 'pull_request' && '1') || '3' }}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -239,12 +239,23 @@ jobs:
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
         run: npx tsx src/ingest.ts --type storage
       - run: npm run generate-storage-svg
+      - name: Generate snapshot/fork SVG
+        # Guarded so a run with no snapshot/fork results (the generator exits
+        # non-zero when none exist) doesn't fail the collect job.
+        run: |
+          if find results/snapshot-fork -name latest.json 2>/dev/null | grep -q .; then
+            npm run generate-snapshot-fork-svg
+          else
+            echo "No snapshot/fork results to render"
+          fi
       - name: Upload SVGs as artifacts
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: storage-benchmark-svgs
-          path: storage_*.svg
+          path: |
+            storage_*.svg
+            snapshot_fork_*.svg
           if-no-files-found: ignore
           retention-days: 7
       - name: Post results to PR
@@ -430,7 +441,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json storage_*.svg results/storage/ results/snapshot-fork/
+          git add package.json package-lock.json storage_*.svg snapshot_fork_*.svg results/storage/ results/snapshot-fork/
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update storage benchmark results [skip ci]"
 
