@@ -169,6 +169,23 @@ export const storageProviders: StorageProviderConfig[] = [
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
+    // Azure snapshots/forks are emulated as sibling containers (server-side
+    // copy-from-URL per blob + a root manifest blob), so they need an account
+    // key with container create/delete permission — the account key grants this
+    // at the storage-account level. Point snapshot-fork mode at a dedicated
+    // snapshot container/account so the sibling-container churn is isolated from
+    // the upload/download container.
+    snapshotFork: {
+      requiredEnvVars: ['AZURE_SNAPSHOT_ACCOUNT_NAME', 'AZURE_SNAPSHOT_ACCOUNT_KEY', 'AZURE_SNAPSHOT_CONTAINER'],
+      bucket: process.env.AZURE_SNAPSHOT_CONTAINER!,
+      createStorage: () => new Storage({
+        adapter: azure({
+          bucket: process.env.AZURE_SNAPSHOT_CONTAINER!,
+          accountName: process.env.AZURE_SNAPSHOT_ACCOUNT_NAME!,
+          accountKey: process.env.AZURE_SNAPSHOT_ACCOUNT_KEY!,
+        }),
+      }),
+    },
   },
   //
   // add providers above

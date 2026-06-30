@@ -52,6 +52,7 @@ jobs:
           - aws-s3
           - cloudflare-r2
           - tigris
+          - azure-blob
           # vercel-blob is disabled pending an adapter fix: its manifest-based
           # snapshot/fork emulation is unreliable on Vercel Blob's eventually-
           # consistent overwrites (stale reads + lost deletes). See providers.ts.
