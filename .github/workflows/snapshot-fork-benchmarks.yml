@@ -1,0 +1,293 @@
+name: Snapshot/Fork Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'src/storage/**'
+      - 'src/util/**'
+      - 'src/run.ts'
+      - 'src/merge-results.ts'
+      - 'package.json'
+  schedule:
+    - cron: '0 7 * * *' # Daily at 7am UTC (offset from the storage benchmark at 6am to avoid racing pushes to master)
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Iterations per provider'
+        required: false
+        default: '100'
+      dataset:
+        description: 'Dataset to test'
+        required: false
+        default: 'small'
+        type: choice
+        options:
+          - small
+          - wide
+          - deep
+
+concurrency:
+  group: snapshot-fork-benchmarks
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  snapshot-fork:
+    name: Snapshot/Fork ${{ matrix.provider }}
+    # One real snapshot+fork cycle per provider per iteration: each iteration
+    # creates and tears down real buckets/objects, so iteration counts are kept
+    # low (and on the smallest dataset) to bound cost and leak risk. PRs run a
+    # single iteration; the daily schedule runs 100 for trend data and commits
+    # the combined results. Fork PRs without secrets skip gracefully
+    # (missing-creds path) rather than failing.
+    runs-on: namespace-profile-default
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        provider:
+          - aws-s3
+          - cloudflare-r2
+          - tigris
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install dependencies
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            npm update
+          else
+            npm ci
+          fi
+      - name: Clear stale results from checkout
+        run: rm -rf results/snapshot-fork/
+      - name: Run snapshot/fork test
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          TIGRIS_STORAGE_ACCESS_KEY_ID: ${{ secrets.TIGRIS_STORAGE_ACCESS_KEY_ID }}
+          TIGRIS_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_STORAGE_SECRET_ACCESS_KEY }}
+          TIGRIS_STORAGE_BUCKET: ${{ secrets.TIGRIS_STORAGE_BUCKET }}
+          # Snapshot-fork emulates snapshots/forks as sibling buckets for S3/R2,
+          # so it needs credentials with bucket create/delete permission.
+          S3_SNAPSHOT_ACCESS_KEY_ID: ${{ secrets.S3_SNAPSHOT_ACCESS_KEY_ID }}
+          S3_SNAPSHOT_SECRET_ACCESS_KEY: ${{ secrets.S3_SNAPSHOT_SECRET_ACCESS_KEY }}
+          S3_SNAPSHOT_BUCKET: ${{ secrets.S3_SNAPSHOT_BUCKET }}
+          R2_SNAPSHOT_ACCESS_KEY_ID: ${{ secrets.R2_SNAPSHOT_ACCESS_KEY_ID }}
+          R2_SNAPSHOT_SECRET_ACCESS_KEY: ${{ secrets.R2_SNAPSHOT_SECRET_ACCESS_KEY }}
+          R2_SNAPSHOT_BUCKET: ${{ secrets.R2_SNAPSHOT_BUCKET }}
+          # Snapshot-fork uses a dedicated Standard-tier, snapshot-enabled Tigris bucket.
+          TIGRIS_SNAPSHOT_ACCESS_KEY: ${{ secrets.TIGRIS_SNAPSHOT_ACCESS_KEY }}
+          TIGRIS_SNAPSHOT_SECRET_KEY: ${{ secrets.TIGRIS_SNAPSHOT_SECRET_KEY }}
+          TIGRIS_SNAPSHOT_STORAGE_BUCKET: ${{ secrets.TIGRIS_SNAPSHOT_STORAGE_BUCKET }}
+        run: |
+          npm run bench -- \
+            --mode snapshot-fork \
+            --provider ${{ matrix.provider }} \
+            --dataset ${{ github.event.inputs.dataset || 'small' }} \
+            --iterations ${{ (github.event_name == 'schedule' && '100') || github.event.inputs.iterations || (github.event_name == 'pull_request' && '1') || '3' }}
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-fork-results-${{ matrix.provider }}
+          path: results/snapshot-fork/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  collect:
+    name: Collect Results
+    runs-on: namespace-profile-default
+    needs: [snapshot-fork]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the rebase-on-push retry below has a merge base.
+          # A shallow (depth-1) clone can make `git rebase origin/<branch>`
+          # fail when the remote has advanced past the shallow boundary.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install dependencies
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            npm update
+          else
+            npm ci
+          fi
+      - name: Download snapshot/fork artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: sf-artifacts/
+          pattern: snapshot-fork-results-*
+      - name: Merge snapshot/fork results
+        # Combines the per-provider artifacts into results/snapshot-fork/<dataset>/.
+        # Guarded so a run with no snapshot/fork artifacts doesn't hard-fail.
+        run: |
+          if find sf-artifacts -name latest.json 2>/dev/null | grep -q .; then
+            npx tsx src/merge-results.ts --input sf-artifacts --mode snapshot-fork
+          else
+            echo "No snapshot/fork artifacts to merge"
+          fi
+      - name: Generate snapshot/fork SVG
+        # Guarded so a run with no snapshot/fork results (the generator exits
+        # non-zero when none exist) doesn't fail the collect job.
+        run: |
+          if find results/snapshot-fork -name latest.json 2>/dev/null | grep -q .; then
+            npm run generate-snapshot-fork-svg
+          else
+            echo "No snapshot/fork results to render"
+          fi
+      - name: Upload SVGs as artifacts
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-fork-benchmark-svgs
+          path: snapshot_fork_*.svg
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Post snapshot/fork results to PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // Artifact layout: sf-artifacts/snapshot-fork-results-<provider>/snapshot-fork/<dataset>/latest.json
+            // Composite scores are absolute (fixed latency ceiling), so each
+            // per-provider file is already comparable — no merge/recompute needed.
+            const files = [];
+            function walk(dir) {
+              if (!fs.existsSync(dir)) return;
+              for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, e.name);
+                if (e.isDirectory()) walk(full);
+                else if (e.name === 'latest.json') files.push(full);
+              }
+            }
+            walk('sf-artifacts');
+
+            // Group results by dataset (inferred from the parent directory name).
+            const byDataset = {};
+            for (const file of files) {
+              const dataset = path.basename(path.dirname(file));
+              let data;
+              try { data = JSON.parse(fs.readFileSync(file, 'utf-8')); } catch { continue; }
+              for (const r of (data.results || [])) {
+                (byDataset[dataset] ||= []).push(r);
+              }
+            }
+
+            const prettyName = p => p === 'aws-s3' ? 'AWS S3' : p === 'cloudflare-r2' ? 'Cloudflare R2' : p.charAt(0).toUpperCase() + p.slice(1);
+            const secs = ms => (ms / 1000).toFixed(2) + 's';
+
+            let body = '## Snapshot/Fork Benchmark Results\n\n';
+            let hasResults = false;
+
+            for (const dataset of Object.keys(byDataset).sort()) {
+              const results = byDataset[dataset]
+                .slice()
+                .sort((a, b) => (b.compositeScore || 0) - (a.compositeScore || 0));
+              if (results.length === 0) continue;
+              hasResults = true;
+
+              body += `### ${dataset} dataset\n\n`;
+              body += '| # | Provider | Score | Snapshot create | Fork (snapshot) | Fork (live) | First read | Status |\n';
+              body += '|---|----------|-------|-----------------|-----------------|-------------|------------|--------|\n';
+
+              results.forEach((r, i) => {
+                const name = prettyName(r.provider);
+                if (r.skipped) {
+                  body += `| ${i + 1} | ${name} | -- | -- | -- | -- | -- | SKIPPED (${r.skipReason || ''}) |\n`;
+                  return;
+                }
+                const score = r.compositeScore !== undefined ? r.compositeScore.toFixed(1) : '--';
+                const snap = secs(r.summary.snapshotCreateMs.median);
+                const forkSnap = secs(r.summary.forkFromSnapshotMs.median);
+                const forkLive = secs(r.summary.forkFromLiveMs.median);
+                const read = secs(r.summary.forkFirstReadMs.median);
+                const ok = r.iterations.filter(it => !it.error && it.verified).length;
+                const total = r.iterations.length;
+                body += `| ${i + 1} | ${name} | ${score} | ${snap} | ${forkSnap} | ${forkLive} | ${read} | ${ok}/${total} |\n`;
+              });
+
+              body += '\n';
+            }
+
+            if (!hasResults) {
+              body += '> No snapshot/fork benchmark results were generated.\n\n';
+            }
+
+            body += `---\n*[View full run](${runUrl})*`;
+
+            // Find and update existing comment or create new one
+            const marker = '## Snapshot/Fork Benchmark Results';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.startsWith(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+      - name: Commit and push
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json snapshot_fork_*.svg results/snapshot-fork/
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update snapshot/fork benchmark results [skip ci]"
+
+          # Remote master can advance during the run (concurrent benchmark
+          # workflows push to master too), so a plain push fails non-fast-forward.
+          # Rebase onto the latest remote and retry a few times before giving up.
+          branch="${GITHUB_REF#refs/heads/}"
+          for attempt in 1 2 3 4 5; do
+            # Rebase before each attempt (including the last) so every rebase
+            # is followed by a push — otherwise the final iteration's rebase
+            # would be wasted and a resolvable non-fast-forward could still fail.
+            git fetch origin "${branch}"
+            git rebase "origin/${branch}" || { git rebase --abort; exit 1; }
+            if git push origin "HEAD:${branch}"; then
+              echo "Pushed on attempt ${attempt}"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); will rebase and retry"
+          done
+          echo "Failed to push after multiple attempts" >&2
+          exit 1
