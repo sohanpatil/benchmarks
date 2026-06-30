@@ -120,6 +120,25 @@ export const storageProviders: StorageProviderConfig[] = [
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
+    // Snapshot-fork is disabled for Vercel Blob pending an adapter fix. The
+    // adapter emulates snapshots/forks via a single shared manifest object and
+    // read-modify-writes it on every create/delete. On Vercel Blob's
+    // eventually-consistent overwrites this is unreliable: snapshot.create can
+    // be invisible to the immediate fork (stale read, 0.3s–>30s window) and
+    // ~60% of deletes are lost, so the manifest accumulates orphans and teardown
+    // can't drain it. Re-enable once @storagesdk/adapters makes the Vercel
+    // snapshot/fork metadata strongly consistent (e.g. per-entry objects).
+    // snapshotFork: {
+    //   requiredEnvVars: ['VERCEL_SNAPSHOT_BLOB_READ_WRITE_TOKEN'],
+    //   bucket: process.env.VERCEL_SNAPSHOT_BLOB_BUCKET || 'benchmarks-snapshot',
+    //   createStorage: () => new Storage({
+    //     adapter: vercel({
+    //       bucket: process.env.VERCEL_SNAPSHOT_BLOB_BUCKET || 'benchmarks-snapshot',
+    //       token: process.env.VERCEL_SNAPSHOT_BLOB_READ_WRITE_TOKEN!,
+    //       access: 'private',
+    //     }),
+    //   }),
+    // },
   },
   {
     name: 'gcs',
@@ -150,6 +169,23 @@ export const storageProviders: StorageProviderConfig[] = [
       }),
     }),
     fileSizes: [1 * 1024 * 1024, 4 * 1024 * 1024, 10 * 1024 * 1024, 16 * 1024 * 1024],
+    // Azure snapshots/forks are emulated as sibling containers (server-side
+    // copy-from-URL per blob + a root manifest blob), so they need an account
+    // key with container create/delete permission — the account key grants this
+    // at the storage-account level. Point snapshot-fork mode at a dedicated
+    // snapshot container/account so the sibling-container churn is isolated from
+    // the upload/download container.
+    snapshotFork: {
+      requiredEnvVars: ['AZURE_SNAPSHOT_ACCOUNT_NAME', 'AZURE_SNAPSHOT_ACCOUNT_KEY', 'AZURE_SNAPSHOT_CONTAINER'],
+      bucket: process.env.AZURE_SNAPSHOT_CONTAINER!,
+      createStorage: () => new Storage({
+        adapter: azure({
+          bucket: process.env.AZURE_SNAPSHOT_CONTAINER!,
+          accountName: process.env.AZURE_SNAPSHOT_ACCOUNT_NAME!,
+          accountKey: process.env.AZURE_SNAPSHOT_ACCOUNT_KEY!,
+        }),
+      }),
+    },
   },
   //
   // add providers above
