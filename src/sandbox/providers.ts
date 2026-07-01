@@ -17,7 +17,7 @@ import { northflank } from '@computesdk/northflank';
 // import { railway } from '@computesdk/railway';
 import { runloop } from '@computesdk/runloop';
 import { sprites } from '@computesdk/sprites';
-// import { superserve } from '@computesdk/superserve';
+import { superserve } from '@computesdk/superserve';
 // import { tenki } from '@computesdk/tenki';
 import { tensorlake } from '@computesdk/tensorlake'
 import { upstash } from '@computesdk/upstash';
@@ -136,11 +136,13 @@ export const providers: ProviderConfig[] = [
     requiredEnvVars: ['SPRITES_TOKEN'],
     createCompute: () => sprites({ apiKey: process.env.SPRITES_TOKEN! }),
   },
-  // {
-  //   name: 'superserve',
-  //   requiredEnvVars: ['SUPERSERVE_API_KEY'],
-  //   createCompute: () => superserve({ apiKey: process.env.SUPERSERVE_API_KEY! }),
-  // },
+  {
+    name: 'superserve',
+    requiredEnvVars: ['SUPERSERVE_API_KEY'],
+    createCompute: () => superserve({ apiKey: process.env.SUPERSERVE_API_KEY! }),
+    // Default template (superserve/base) has no Node; the `node -v` readiness probe needs it.
+    sandboxOptions: { templateId: 'superserve/node-22' },
+  },
   // {
   //   name: 'tenki',
   //   requiredEnvVars: ['TENKI_API_KEY'],
