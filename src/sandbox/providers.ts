@@ -3,18 +3,22 @@ import { blaxel } from '@computesdk/blaxel';
 import { codesandbox } from '@computesdk/codesandbox';
 // import { collimate } from '@computesdk/collimate';
 import { cloudflare } from '@computesdk/cloudflare';
+// import { createosSandbox } from '@computesdk/createos-sandbox';
 import { daytona } from '@computesdk/daytona';
 import { declaw } from '@computesdk/declaw';
 import { e2b } from '@computesdk/e2b';
 import { hopx } from '@computesdk/hopx';
 import { isorun } from '@computesdk/isorun';
+// import { lelantos } from '@computesdk/lelantos';
 import { modal } from '@computesdk/modal';
 // import { namespace } from '@computesdk/namespace';
 import { northflank } from '@computesdk/northflank';
+// import { quilt } from '@computesdk/quilt';
 // import { railway } from '@computesdk/railway';
 import { runloop } from '@computesdk/runloop';
 import { sprites } from '@computesdk/sprites';
 // import { superserve } from '@computesdk/superserve';
+// import { tenki } from '@computesdk/tenki';
 import { tensorlake } from '@computesdk/tensorlake'
 import { upstash } from '@computesdk/upstash';
 import { vercel } from '@computesdk/vercel';
@@ -55,6 +59,11 @@ export const providers: ProviderConfig[] = [
   //   requiredEnvVars: ['COLLIMATE_API_KEY'],
   //   createCompute: () => collimate({ apiKey: process.env.COLLIMATE_API_KEY! }),
   // },
+  // {
+  //   name: 'createos-sandbox',
+  //   requiredEnvVars: ['CREATEOS_SANDBOX_API_KEY'],
+  //   createCompute: () => createosSandbox({ apiKey: process.env.CREATEOS_SANDBOX_API_KEY! }),
+  // },
   {
     name: 'daytona',
     requiredEnvVars: ['DAYTONA_API_KEY'],
@@ -82,6 +91,11 @@ export const providers: ProviderConfig[] = [
     createCompute: () => isorun({ apiKey: process.env.ISORUN_API_KEY! }),
     sandboxOptions: { image: 'node:22' },
   },
+  // {
+  //   name: 'lelantos',
+  //   requiredEnvVars: ['LELANTOS_API_KEY'],
+  //   createCompute: () => lelantos({ apiKey: process.env.LELANTOS_API_KEY! }),
+  // },
   {
     name: 'modal',
     requiredEnvVars: ['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'],
@@ -103,6 +117,11 @@ export const providers: ProviderConfig[] = [
     }),
   },
   // {
+  //   name: 'quilt',
+  //   requiredEnvVars: ['QUILT_API_KEY', 'QUILT_BASE_URL'],
+  //   createCompute: () => quilt({ apiKey: process.env.QUILT_API_KEY!, baseUrl: process.env.QUILT_BASE_URL! }),
+  // },
+  // {
   //   name: 'railway',
   //   requiredEnvVars: ['RAILWAY_API_TOKEN', 'RAILWAY_ENVIRONMENT_ID'],
   //   createCompute: () => railway({ token: process.env.RAILWAY_API_TOKEN!, environmentId: process.env.RAILWAY_ENVIRONMENT_ID! }),
@@ -121,6 +140,11 @@ export const providers: ProviderConfig[] = [
   //   name: 'superserve',
   //   requiredEnvVars: ['SUPERSERVE_API_KEY'],
   //   createCompute: () => superserve({ apiKey: process.env.SUPERSERVE_API_KEY! }),
+  // },
+  // {
+  //   name: 'tenki',
+  //   requiredEnvVars: ['TENKI_API_KEY'],
+  //   createCompute: () => tenki({ apiKey: process.env.TENKI_API_KEY! }),
   // },
   {
     name: 'tensorlake',

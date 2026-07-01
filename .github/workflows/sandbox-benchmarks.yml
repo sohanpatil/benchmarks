@@ -54,17 +54,21 @@ jobs:
           - cloudflare
           - codesandbox
           # - collimate
+          # - createos-sandbox
           - daytona
           - declaw
           - e2b
           - hopx
           - isorun
+          # - lelantos
           - modal
           # - namespace
           - northflank
+          # - quilt
           # - railway
           - runloop
           # - superserve
+          # - tenki
           - tensorlake
           - upstash
           - vercel
@@ -97,20 +101,25 @@ jobs:
           CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
           CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
           # COLLIMATE_API_KEY: ${{ secrets.COLLIMATE_API_KEY }}
+          # CREATEOS_SANDBOX_API_KEY: ${{ secrets.CREATEOS_SANDBOX_API_KEY }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
           DECLAW_API_KEY: ${{ secrets.DECLAW_API_KEY }}
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
           HOPX_API_KEY: ${{ secrets.HOPX_API_KEY }}
           ISORUN_API_KEY: ${{ secrets.ISORUN_API_KEY }}
+          # LELANTOS_API_KEY: ${{ secrets.LELANTOS_API_KEY }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           # NSC_TOKEN: ${{ secrets.NSC_TOKEN }}
           NORTHFLANK_TOKEN: ${{ secrets.NORTHFLANK_TOKEN }}
           NORTHFLANK_PROJECT_ID: ${{ secrets.NORTHFLANK_PROJECT_ID }}
+          # QUILT_API_KEY: ${{ secrets.QUILT_API_KEY }}
+          # QUILT_BASE_URL: ${{ secrets.QUILT_BASE_URL }}
           # RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           # RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
           RUNLOOP_API_KEY: ${{ secrets.RUNLOOP_API_KEY }}
           # SUPERSERVE_API_KEY: ${{ secrets.SUPERSERVE_API_KEY }}
+          # TENKI_API_KEY: ${{ secrets.TENKI_API_KEY }}
           TENSORLAKE_API_KEY: ${{ secrets.TENSORLAKE_API_KEY }}
           UPSTASH_BOX_API_KEY: ${{ secrets.UPSTASH_BOX_API_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
