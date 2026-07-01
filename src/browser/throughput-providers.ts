@@ -1,6 +1,8 @@
 import { browserbase } from '@computesdk/browserbase';
+import { browseruse } from '@computesdk/browseruse';
 import { hyperbrowser } from '@computesdk/hyperbrowser';
 import { kernel } from '@computesdk/kernel';
+import { notte } from '@computesdk/notte';
 import { steel } from '@computesdk/steel';
 import type { ThroughputProviderConfig } from './throughput-types.js';
 
@@ -29,6 +31,18 @@ export const throughputProviders: ThroughputProviderConfig[] = [
     },
   },
   {
+    name: 'browseruse',
+    requiredEnvVars: ['BROWSER_USE_API_KEY'],
+    createBrowserProvider: () => browseruse({
+      apiKey: process.env.BROWSER_USE_API_KEY!,
+    }),
+    sessionCreateOptions: {
+      stealth: true,
+      headless: true,
+      viewport: VIEWPORT,
+    },
+  },
+  {
     name: 'hyperbrowser',
     requiredEnvVars: ['HYPERBROWSER_API_KEY'],
     createBrowserProvider: () => hyperbrowser({
@@ -46,6 +60,18 @@ export const throughputProviders: ThroughputProviderConfig[] = [
     requiredEnvVars: ['KERNEL_API_KEY'],
     createBrowserProvider: () => kernel({
       apiKey: process.env.KERNEL_API_KEY!,
+    }),
+    sessionCreateOptions: {
+      stealth: true,
+      headless: true,
+      viewport: VIEWPORT,
+    },
+  },
+  {
+    name: 'notte',
+    requiredEnvVars: ['NOTTE_API_KEY'],
+    createBrowserProvider: () => notte({
+      apiKey: process.env.NOTTE_API_KEY!,
     }),
     sessionCreateOptions: {
       stealth: true,
