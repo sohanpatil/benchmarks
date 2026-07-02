@@ -41,6 +41,7 @@ export const providers: ProviderConfig[] = [
     sandboxOptions: { diskId: process.env.ARCHIL_DISK_ID! }
   },
   {
+    // Activated in daily + PR benchmarks once BEAM_TOKEN / BEAM_WORKSPACE_ID secrets landed.
     name: 'beam',
     requiredEnvVars: ['BEAM_TOKEN', 'BEAM_WORKSPACE_ID'],
     createCompute: () => beam({ token: process.env.BEAM_TOKEN!, workspaceId: process.env.BEAM_WORKSPACE_ID! }),

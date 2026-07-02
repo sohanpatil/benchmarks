@@ -49,7 +49,7 @@ jobs:
       matrix:
         provider:
           - archil
-          # - beam
+          - beam
           - blaxel
           # - cloud-run
           - cloudflare
@@ -94,8 +94,8 @@ jobs:
           ARCHIL_API_KEY: ${{ secrets.ARCHIL_API_KEY }}
           ARCHIL_REGION: ${{ secrets.ARCHIL_REGION }}
           ARCHIL_DISK_ID: ${{ secrets.ARCHIL_DISK_ID }}
-          # BEAM_TOKEN: ${{ secrets.BEAM_TOKEN }}
-          # BEAM_WORKSPACE_ID: ${{ secrets.BEAM_WORKSPACE_ID }}
+          BEAM_TOKEN: ${{ secrets.BEAM_TOKEN }}
+          BEAM_WORKSPACE_ID: ${{ secrets.BEAM_WORKSPACE_ID }}
           # CLOUD_RUN_SANDBOX_URL: ${{ secrets.CLOUD_RUN_SANDBOX_URL }}
           # CLOUD_RUN_SANDBOX_SECRET: ${{ secrets.CLOUD_RUN_SANDBOX_SECRET }}
           BL_API_KEY: ${{ secrets.BL_API_KEY }}
