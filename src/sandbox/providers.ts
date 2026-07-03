@@ -20,6 +20,10 @@ import { upstash } from '@computesdk/upstash';
 import { vercel } from '@computesdk/vercel';
 import type { ProviderConfig } from './types.js';
 
+function getCloudflareSandboxApiKey(): string | undefined {
+  return process.env.CLOUDFLARE_SANDBOX_API_KEY || process.env.CLOUDFLARE_SANDBOX_SECRET;
+}
+
 /**
  * All provider benchmark configurations.
  *
@@ -41,8 +45,14 @@ export const providers: ProviderConfig[] = [
   },
   {
     name: 'cloudflare',
-    requiredEnvVars: ['CLOUDFLARE_SANDBOX_URL', 'CLOUDFLARE_SANDBOX_SECRET'],
-    createCompute: () => cloudflare({ sandboxUrl: process.env.CLOUDFLARE_SANDBOX_URL!, sandboxSecret: process.env.CLOUDFLARE_SANDBOX_SECRET! }),
+    requiredEnvVars: ['CLOUDFLARE_SANDBOX_URL', 'CLOUDFLARE_SANDBOX_API_KEY'],
+    getMissingEnvVars: () => {
+      const missing: string[] = [];
+      if (!process.env.CLOUDFLARE_SANDBOX_URL) missing.push('CLOUDFLARE_SANDBOX_URL');
+      if (!getCloudflareSandboxApiKey()) missing.push('CLOUDFLARE_SANDBOX_API_KEY or CLOUDFLARE_SANDBOX_SECRET');
+      return missing;
+    },
+    createCompute: () => cloudflare({ sandboxUrl: process.env.CLOUDFLARE_SANDBOX_URL!, sandboxApiKey: getCloudflareSandboxApiKey()! }),
   },
   {
     name: 'codesandbox',

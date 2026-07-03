@@ -1,13 +1,14 @@
 import type { ProviderConfig, BenchmarkResult, TimingResult } from './types.js';
+import { getMissingEnvVars } from './types.js';
 import { computeStats } from '../util/stats.js';
 import { withTimeout } from '../util/timeout.js';
 import { randomUUID } from 'node:crypto';
 
 export async function runBenchmark(config: ProviderConfig): Promise<BenchmarkResult> {
-  const { name, iterations = 100, timeout = 120_000, requiredEnvVars, sandboxOptions, destroyTimeoutMs } = config;
+  const { name, iterations = 100, timeout = 120_000, sandboxOptions, destroyTimeoutMs } = config;
 
   // Check if all required credentials are available
-  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+  const missingVars = getMissingEnvVars(config);
   if (missingVars.length > 0) {
     return {
       provider: name,

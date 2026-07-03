@@ -1,4 +1,5 @@
 import type { ProviderConfig, TimingResult, ConcurrentBenchmarkResult } from './types.js';
+import { getMissingEnvVars } from './types.js';
 import { runIteration } from './benchmark.js';
 import { computeStats } from '../util/stats.js';
 import { randomUUID } from 'node:crypto';
@@ -8,10 +9,10 @@ interface ConcurrentConfig extends ProviderConfig {
 }
 
 export async function runConcurrentBenchmark(config: ConcurrentConfig): Promise<ConcurrentBenchmarkResult> {
-  const { name, concurrency, timeout = 120_000, requiredEnvVars, sandboxOptions, destroyTimeoutMs } = config;
+  const { name, concurrency, timeout = 120_000, sandboxOptions, destroyTimeoutMs } = config;
 
   // Check if all required credentials are available
-  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+  const missingVars = getMissingEnvVars(config);
   if (missingVars.length > 0) {
     return {
       provider: name,

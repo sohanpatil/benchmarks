@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import type { ProviderConfig, Stats } from './types.js';
+import { getMissingEnvVars } from './types.js';
 import { computeStats } from '../util/stats.js';
 import { withTimeout } from '../util/timeout.js';
 
@@ -33,9 +34,9 @@ export interface HeavyBuildBenchmarkResult {
 }
 
 export async function runHeavyBuildBenchmark(config: ProviderConfig): Promise<HeavyBuildBenchmarkResult> {
-  const { name, iterations = 3, timeout = 300_000, requiredEnvVars, sandboxOptions, destroyTimeoutMs = 15_000 } = config;
+  const { name, iterations = 3, timeout = 300_000, sandboxOptions, destroyTimeoutMs = 15_000 } = config;
 
-  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+  const missingVars = getMissingEnvVars(config);
   if (missingVars.length > 0) {
     return {
       provider: name,

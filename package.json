@@ -17,6 +17,7 @@
     "bench:sandbox:resources": "tsx src/run.ts --mode sandbox-resources",
     "bench:sandbox:heavy-build": "tsx src/run.ts --mode sandbox-heavy-build",
     "bench:blaxel": "tsx src/run.ts --provider blaxel",
+    "bench:cloudflare": "tsx src/run.ts --provider cloudflare",
     "bench:codesandbox": "tsx src/run.ts --provider codesandbox",
     "bench:daytona": "tsx src/run.ts --provider daytona",
     "bench:e2b": "tsx src/run.ts --provider e2b",

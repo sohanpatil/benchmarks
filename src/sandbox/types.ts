@@ -7,12 +7,18 @@ export interface ProviderConfig {
   timeout?: number;
   /** Environment variables that must all be set to run this benchmark */
   requiredEnvVars: string[];
+  /** Override for providers that accept alternative env var names */
+  getMissingEnvVars?: () => string[];
   /** Creates a compute instance — either direct SDK or gateway-based */
   createCompute: () => any;
   /** Options passed to sandbox.create() (e.g. { image: 'node:20' }) */
   sandboxOptions?: Record<string, any>;
   /** Timeout for sandbox.destroy() in ms (default: 15000) */
   destroyTimeoutMs?: number;
+}
+
+export function getMissingEnvVars(config: ProviderConfig): string[] {
+  return config.getMissingEnvVars?.() ?? config.requiredEnvVars.filter(v => !process.env[v]);
 }
 
 export interface TimingResult {

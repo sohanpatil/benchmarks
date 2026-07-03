@@ -100,6 +100,7 @@ jobs:
           BL_API_KEY: ${{ secrets.BL_API_KEY }}
           BL_WORKSPACE: ${{ secrets.BL_WORKSPACE }}
           CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
+          CLOUDFLARE_SANDBOX_API_KEY: ${{ secrets.CLOUDFLARE_SANDBOX_API_KEY }}
           CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
           CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
           # COLLIMATE_API_KEY: ${{ secrets.COLLIMATE_API_KEY }}
@@ -196,6 +197,7 @@ jobs:
           BL_API_KEY: ${{ secrets.BL_API_KEY }}
           BL_WORKSPACE: ${{ secrets.BL_WORKSPACE }}
           CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
+          CLOUDFLARE_SANDBOX_API_KEY: ${{ secrets.CLOUDFLARE_SANDBOX_API_KEY }}
           CLOUDFLARE_SANDBOX_SECRET: ${{ secrets.CLOUDFLARE_SANDBOX_SECRET }}
           CSB_API_KEY: ${{ secrets.CSB_API_KEY }}
           DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}

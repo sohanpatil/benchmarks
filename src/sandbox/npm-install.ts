@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import type { ProviderConfig, Stats } from './types.js';
+import { getMissingEnvVars } from './types.js';
 import { computeStats } from '../util/stats.js';
 import { withTimeout } from '../util/timeout.js';
 
@@ -30,9 +31,9 @@ export interface NpmInstallBenchmarkResult {
 }
 
 export async function runNpmInstallBenchmark(config: ProviderConfig): Promise<NpmInstallBenchmarkResult> {
-  const { name, iterations = 10, timeout = 120_000, requiredEnvVars, sandboxOptions, destroyTimeoutMs = 15_000 } = config;
+  const { name, iterations = 10, timeout = 120_000, sandboxOptions, destroyTimeoutMs = 15_000 } = config;
 
-  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+  const missingVars = getMissingEnvVars(config);
   if (missingVars.length > 0) {
     return {
       provider: name,
