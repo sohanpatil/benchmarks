@@ -54,7 +54,7 @@ async function runStorageIteration(
     return { uploadMs, downloadMs, throughputMbps, fileSizeBytes };
   } catch (err) {
     const error = formatError(err);
-    
+
     // Attempt cleanup even on failure
     try {
       await withTimeout(storage.delete(key), 10000, 'Delete timed out');
@@ -66,6 +66,7 @@ async function runStorageIteration(
   }
 }
 
+// default interations = 100
 export async function runStorageBenchmark(config: StorageProviderConfig, fileSizeBytes: number): Promise<StorageBenchmarkResult> {
   const { name, iterations = 100, timeout = 30000, concurrency = 1, requiredEnvVars, createStorage, bucket } = config;
 
