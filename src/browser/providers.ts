@@ -27,6 +27,7 @@ export const browserProviders: BrowserProviderConfig[] = [
     createBrowserProvider: () => browseruse({
       apiKey: process.env.BROWSER_USE_API_KEY!
     }),
+    sessionCreateOptions: { proxies: false },
   },
   {
     name: 'hyperbrowser',
