@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { ThroughputBenchmarkResult } from './throughput-types.js';
+import { ACTIONS_PER_SESSION, type ThroughputBenchmarkResult } from './throughput-types.js';
 import {
   computeThroughputCompositeScores,
   sortThroughputByCompositeScore,
@@ -99,7 +99,7 @@ function generateSVG(results: ThroughputBenchmarkResult[], timestamp: string): s
   };
 
   const title = 'Browser Step Throughput Benchmarks';
-  const subtitle = '50-action Wikipedia loop per session — agent-style sequential actions';
+  const subtitle = `${ACTIONS_PER_SESSION}-action Wikipedia loop per session — agent-style sequential actions`;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
@@ -182,8 +182,7 @@ ${sponsorImages.length > 0 ? (() => {
     const screenshotMed = r.summary.perActionType.screenshot?.median ?? 0;
     const createMed = r.summary.createMs.median;
 
-    const expectedActions = 50;
-    const fullSuccess = r.iterations.filter(it => !it.error && it.actionsCompleted === expectedActions).length;
+    const fullSuccess = r.iterations.filter(it => !it.error && it.actionsCompleted === ACTIONS_PER_SESSION).length;
     const total = r.iterations.length;
     const allFailed = fullSuccess === 0;
     const score = r.compositeScore !== undefined ? r.compositeScore.toFixed(1) : '--';
@@ -239,7 +238,7 @@ ${sponsorImages.length > 0 ? (() => {
   <text class="timestamp" x="${width - padding}" y="${height - 28}" text-anchor="end">Last updated: ${date}</text>
 
   <!-- Footnote -->
-  <text class="timestamp" x="${padding}" y="${height - 14}">Each session runs 50 sequential actions (navigate, wait, screenshot, textContent, click, goBack) on Wikipedia. Higher APS is better.</text>
+  <text class="timestamp" x="${padding}" y="${height - 14}">Each session runs ${ACTIONS_PER_SESSION} sequential actions (navigate, wait, screenshot, textContent, click, goBack) on Wikipedia. Higher APS is better.</text>
 
 </svg>`;
 
