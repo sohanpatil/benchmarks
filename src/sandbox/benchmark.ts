@@ -117,6 +117,18 @@ export async function runIteration(
 
     sandbox = await withTimeout(compute.sandbox.create(sandboxOptions), timeout, 'Sandbox creation timed out');
 
+    const result = await withTimeout(
+      sandbox.runCommand('node -v'),
+      30_000,
+      'First command execution timed out'
+    ) as { exitCode: number; stderr?: string };
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Command failed with exit code ${result.exitCode}: ${result.stderr || 'Unknown error'}`);
+    }
+
+    const ttiMs = performance.now() - start;
+
     const markerA = '/tmp/.bench_ephemeral_check';
     const markerB = '/var/tmp/.bench_ephemeral_check';
     const probeToken = reuseDetector
@@ -177,18 +189,6 @@ export async function runIteration(
 
       rememberSignals(identity, reuseDetector);
     }
-
-    const result = await withTimeout(
-      sandbox.runCommand('node -v'),
-      30_000,
-      'First command execution timed out'
-    ) as { exitCode: number; stderr?: string };
-
-    if (result.exitCode !== 0) {
-      throw new Error(`Command failed with exit code ${result.exitCode}: ${result.stderr || 'Unknown error'}`);
-    }
-
-    const ttiMs = performance.now() - start;
 
     return { ttiMs };
   } finally {
