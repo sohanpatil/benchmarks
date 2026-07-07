@@ -100,7 +100,7 @@ jobs:
             --provider ${{ matrix.provider }} \
             --file-size $FILE_SIZE \
             --storage-concurrency ${{ (github.event_name == 'schedule' && '16') || (github.event_name == 'pull_request' && '8') || github.event.inputs.storage_concurrency || '1' }} \
-            --iterations ${{ (github.event_name == 'schedule' && '10000') || (github.event_name == 'pull_request' && '100') || github.event.inputs.iterations || '100' }}
+            --iterations ${{ (github.event_name == 'schedule' && '110') || (github.event_name == 'pull_request' && '10') || github.event.inputs.iterations || '100' }}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
