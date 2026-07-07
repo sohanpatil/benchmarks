@@ -2,7 +2,7 @@ import { archil } from '@computesdk/archil';
 import { beam } from '@computesdk/beam';
 import { blaxel } from '@computesdk/blaxel';
 import { codesandbox } from '@computesdk/codesandbox';
-// import { cloudRun } from '@computesdk/cloud-run';
+import { cloudRun } from '@computesdk/cloud-run';
 // import { collimate } from '@computesdk/collimate';
 import { cloudflare } from '@computesdk/cloudflare';
 import { createosSandbox } from '@computesdk/createos-sandbox';
@@ -52,11 +52,11 @@ export const providers: ProviderConfig[] = [
     requiredEnvVars: ['BL_API_KEY', 'BL_WORKSPACE'],
     createCompute: () => blaxel({ apiKey: process.env.BL_API_KEY!, workspace: process.env.BL_WORKSPACE!, region: 'us-was-1' }),
   },
-  // {
-  //   name: 'cloud-run',
-  //   requiredEnvVars: ['CLOUD_RUN_SANDBOX_URL', 'CLOUD_RUN_SANDBOX_SECRET'],
-  //   createCompute: () => cloudRun({ sandboxUrl: process.env.CLOUD_RUN_SANDBOX_URL!, sandboxSecret: process.env.CLOUD_RUN_SANDBOX_SECRET! }),
-  // },
+  {
+    name: 'cloud-run',
+    requiredEnvVars: ['CLOUD_RUN_SANDBOX_URL', 'CLOUD_RUN_SANDBOX_SECRET'],
+    createCompute: () => cloudRun({ sandboxUrl: process.env.CLOUD_RUN_SANDBOX_URL!, sandboxSecret: process.env.CLOUD_RUN_SANDBOX_SECRET! }),
+  },
   {
     name: 'cloudflare',
     requiredEnvVars: ['CLOUDFLARE_SANDBOX_URL', 'CLOUDFLARE_SANDBOX_SECRET'],

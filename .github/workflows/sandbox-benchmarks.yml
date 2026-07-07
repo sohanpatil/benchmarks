@@ -51,7 +51,7 @@ jobs:
           - archil
           - beam
           - blaxel
-          # - cloud-run
+          - cloud-run
           - cloudflare
           - codesandbox
           # - collimate
@@ -96,8 +96,8 @@ jobs:
           ARCHIL_DISK_ID: ${{ secrets.ARCHIL_DISK_ID }}
           BEAM_TOKEN: ${{ secrets.BEAM_TOKEN }}
           BEAM_WORKSPACE_ID: ${{ secrets.BEAM_WORKSPACE_ID }}
-          # CLOUD_RUN_SANDBOX_URL: ${{ secrets.CLOUD_RUN_SANDBOX_URL }}
-          # CLOUD_RUN_SANDBOX_SECRET: ${{ secrets.CLOUD_RUN_SANDBOX_SECRET }}
+          CLOUD_RUN_SANDBOX_URL: ${{ secrets.CLOUD_RUN_SANDBOX_URL }}
+          CLOUD_RUN_SANDBOX_SECRET: ${{ secrets.CLOUD_RUN_SANDBOX_SECRET }}
           BL_API_KEY: ${{ secrets.BL_API_KEY }}
           BL_WORKSPACE: ${{ secrets.BL_WORKSPACE }}
           CLOUDFLARE_SANDBOX_URL: ${{ secrets.CLOUDFLARE_SANDBOX_URL }}
