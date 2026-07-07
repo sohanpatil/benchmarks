@@ -64,20 +64,20 @@
   <!-- Row 1 -->
   <text class="rank rank-1" x="40" y="208">1</text>
   <text class="row provider" x="80" y="208">Azure Blob Storage</text>
-  <text class="row download" x="280" y="208">95.9</text>
-  <text class="row download fast" x="420" y="208">0.35s</text>
-  <text class="row" x="600" y="208">382.0 Mbps</text>
-  <text class="row" x="780" y="208">0.13s</text>
+  <text class="row download" x="280" y="208">96.1</text>
+  <text class="row download fast" x="420" y="208">0.32s</text>
+  <text class="row" x="600" y="208">415.5 Mbps</text>
+  <text class="row" x="780" y="208">0.15s</text>
   <text class="row status" x="960" y="208">10000/10000</text>
   <line class="divider" x1="24" y1="222" x2="1176" y2="222"/>
 
   <!-- Row 2 -->
   <text class="rank rank-2" x="40" y="252">2</text>
   <text class="row provider" x="80" y="252">AWS S3</text>
-  <text class="row download" x="280" y="252">95.1</text>
-  <text class="row download fast" x="420" y="252">0.24s</text>
-  <text class="row" x="600" y="252">551.0 Mbps</text>
-  <text class="row" x="780" y="252">0.58s</text>
+  <text class="row download" x="280" y="252">94.8</text>
+  <text class="row download fast" x="420" y="252">0.26s</text>
+  <text class="row" x="600" y="252">525.8 Mbps</text>
+  <text class="row" x="780" y="252">0.57s</text>
   <text class="row status" x="960" y="252">10000/10000</text>
   <line class="divider" x1="24" y1="266" x2="1176" y2="266"/>
 
@@ -85,33 +85,33 @@
   <text class="rank rank-3" x="40" y="296">3</text>
   <text class="row provider" x="80" y="296">Cloudflare R2</text>
   <text class="row download" x="280" y="296">94.7</text>
-  <text class="row download fast" x="420" y="296">0.37s</text>
-  <text class="row" x="600" y="296">359.9 Mbps</text>
-  <text class="row" x="780" y="296">0.84s</text>
-  <text class="row status" x="960" y="296">9994/10000</text>
+  <text class="row download fast" x="420" y="296">0.38s</text>
+  <text class="row" x="600" y="296">356.3 Mbps</text>
+  <text class="row" x="780" y="296">0.83s</text>
+  <text class="row status" x="960" y="296">10000/10000</text>
   <line class="divider" x1="24" y1="310" x2="1176" y2="310"/>
 
   <!-- Row 4 -->
   <text class="rank" x="40" y="340">4</text>
   <text class="row provider" x="80" y="340">Tigris</text>
-  <text class="row download" x="280" y="340">94.3</text>
-  <text class="row download fast" x="420" y="340">0.47s</text>
-  <text class="row" x="600" y="340">283.7 Mbps</text>
-  <text class="row" x="780" y="340">0.56s</text>
+  <text class="row download" x="280" y="340">94.4</text>
+  <text class="row download fast" x="420" y="340">0.45s</text>
+  <text class="row" x="600" y="340">300.4 Mbps</text>
+  <text class="row" x="780" y="340">0.62s</text>
   <text class="row status" x="960" y="340">10000/10000</text>
   <line class="divider" x1="24" y1="354" x2="1176" y2="354"/>
 
   <!-- Row 5 -->
   <text class="rank" x="40" y="384">5</text>
   <text class="row provider" x="80" y="384">Vercel Blob</text>
-  <text class="row download" x="280" y="384">78.6</text>
-  <text class="row download fast" x="420" y="384">1.23s</text>
-  <text class="row" x="600" y="384">109.1 Mbps</text>
-  <text class="row" x="780" y="384">0.34s</text>
-  <text class="row status" x="960" y="384">8481/10000</text>
+  <text class="row download" x="280" y="384">76.9</text>
+  <text class="row download fast" x="420" y="384">1.14s</text>
+  <text class="row" x="600" y="384">117.6 Mbps</text>
+  <text class="row" x="780" y="384">0.41s</text>
+  <text class="row status" x="960" y="384">8304/10000</text>
 
   <!-- Timestamp -->
-  <text class="timestamp" x="1176" y="444" text-anchor="end">Last updated: Jul 6, 2026, 08:05 AM UTC</text>
+  <text class="timestamp" x="1176" y="444" text-anchor="end">Last updated: Jul 7, 2026, 07:39 AM UTC</text>
 
   <!-- Footnote -->
   <text class="timestamp" x="24" y="458">Tests upload then download. Lower download time is better. Throughput is computed from download timing.</text>
