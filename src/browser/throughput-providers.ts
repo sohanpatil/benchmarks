@@ -37,10 +37,10 @@ export const throughputProviders: ThroughputProviderConfig[] = [
       apiKey: process.env.BROWSER_USE_API_KEY!,
     }),
     sessionCreateOptions: {
-      stealth: true,
+      stealth: false,
+      proxies: false,
       headless: true,
       viewport: VIEWPORT,
-      proxies: false,
     },
   },
   {
@@ -77,7 +77,8 @@ export const throughputProviders: ThroughputProviderConfig[] = [
       apiKey: process.env.NOTTE_API_KEY!,
     }),
     sessionCreateOptions: {
-      stealth: true,
+      stealth: false,
+      proxies: false,
       headless: true,
       viewport: VIEWPORT,
     },
