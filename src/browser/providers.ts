@@ -43,6 +43,7 @@ export const browserProviders: BrowserProviderConfig[] = [
     createBrowserProvider: () => kernel({
       apiKey: process.env.KERNEL_API_KEY!
     }),
+    sessionCreateOptions: { stealth: false }
   },
   {
     name: 'notte',

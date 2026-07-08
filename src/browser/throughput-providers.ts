@@ -25,7 +25,7 @@ export const throughputProviders: ThroughputProviderConfig[] = [
     }),
     sessionCreateOptions: {
       region: 'us-east-1',
-      stealth: true,
+      stealth: false,
       headless: true,
       viewport: VIEWPORT,
     },
@@ -37,7 +37,7 @@ export const throughputProviders: ThroughputProviderConfig[] = [
       apiKey: process.env.BROWSER_USE_API_KEY!,
     }),
     sessionCreateOptions: {
-      stealth: true,
+      stealth: false,
       headless: true,
       viewport: VIEWPORT,
       proxies: false,
@@ -51,7 +51,7 @@ export const throughputProviders: ThroughputProviderConfig[] = [
     }),
     sessionCreateOptions: {
       region: 'us-east',
-      stealth: true,
+      stealth: false,
       headless: true,
       viewport: VIEWPORT,
     },
@@ -63,7 +63,7 @@ export const throughputProviders: ThroughputProviderConfig[] = [
       apiKey: process.env.KERNEL_API_KEY!,
     }),
     sessionCreateOptions: {
-      stealth: true,
+      stealth: false,
       headless: true,
       viewport: VIEWPORT,
     },
@@ -75,7 +75,7 @@ export const throughputProviders: ThroughputProviderConfig[] = [
       apiKey: process.env.NOTTE_API_KEY!,
     }),
     sessionCreateOptions: {
-      stealth: true,
+      stealth: false,
       headless: true,
       viewport: VIEWPORT,
     },
@@ -87,7 +87,7 @@ export const throughputProviders: ThroughputProviderConfig[] = [
       apiKey: process.env.STEEL_API_KEY!,
     }),
     sessionCreateOptions: {
-      stealth: true,
+      stealth: false,
       headless: true,
       viewport: VIEWPORT,
     },
