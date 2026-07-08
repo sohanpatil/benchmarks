@@ -24,6 +24,11 @@ on:
         description: 'Provider to run (leave empty for all)'
         required: false
         default: ''
+      dry_run:
+        description: 'Run without ingesting or committing results'
+        required: false
+        default: false
+        type: boolean
       mode:
         description: 'Test mode (leave empty to run all)'
         required: false
@@ -183,7 +188,7 @@ jobs:
       - name: Merge results
         run: npx tsx src/merge-results.ts --input artifacts
       - name: Ingest results to platform
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.inputs.dry_run != 'true'
         continue-on-error: true
         env:
           INGEST_URL: ${{ secrets.INGEST_URL }}
@@ -281,7 +286,7 @@ jobs:
               });
             }
       - name: Commit and push
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.inputs.dry_run != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
