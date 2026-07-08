@@ -20,6 +20,10 @@ on:
         description: 'Concurrent sandboxes for burst/staggered tests'
         required: false
         default: '100'
+      provider:
+        description: 'Provider to run (leave empty for all)'
+        required: false
+        default: ''
       mode:
         description: 'Test mode (leave empty to run all)'
         required: false
@@ -42,6 +46,7 @@ permissions:
 jobs:
   bench:
     name: Bench ${{ matrix.provider }}
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.provider == '' || github.event.inputs.provider == matrix.provider
     runs-on: namespace-profile-default
     timeout-minutes: 60
     strategy:
