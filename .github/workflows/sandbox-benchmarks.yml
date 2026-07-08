@@ -51,7 +51,6 @@ permissions:
 jobs:
   bench:
     name: Bench ${{ matrix.provider }}
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.provider == '' || github.event.inputs.provider == matrix.provider
     runs-on: namespace-profile-default
     timeout-minutes: 60
     strategy:
@@ -90,6 +89,7 @@ jobs:
           node-version: 24
           cache: 'npm'
       - name: Install dependencies
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.provider == '' || github.event.inputs.provider == matrix.provider
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             npm update
@@ -97,8 +97,10 @@ jobs:
             npm ci
           fi
       - name: Clear stale results from checkout
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.provider == '' || github.event.inputs.provider == matrix.provider
         run: rm -rf results/
       - name: Run benchmark
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.provider == '' || github.event.inputs.provider == matrix.provider
         env:
           COMPUTESDK_API_KEY: ${{ secrets.COMPUTESDK_API_KEY }}
           ARCHIL_API_KEY: ${{ secrets.ARCHIL_API_KEY }}
@@ -149,7 +151,7 @@ jobs:
             --concurrency ${{ github.event.inputs.concurrency || (github.event_name == 'pull_request' && '10') || '100' }} \
             $MODE_FLAG
       - name: Upload results
-        if: always()
+        if: always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.provider == '' || github.event.inputs.provider == matrix.provider)
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ matrix.provider }}
