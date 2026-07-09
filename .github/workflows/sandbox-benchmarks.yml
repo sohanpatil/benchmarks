@@ -71,7 +71,7 @@ jobs:
           - hopx
           - isorun
           # - lelantos
-          # - lightning
+          - lightning
           - modal
           # - namespace
           - northflank
@@ -124,7 +124,7 @@ jobs:
           HOPX_API_KEY: ${{ secrets.HOPX_API_KEY }}
           ISORUN_API_KEY: ${{ secrets.ISORUN_API_KEY }}
           # LELANTOS_API_KEY: ${{ secrets.LELANTOS_API_KEY }}
-          # LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
+          LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           # NSC_TOKEN: ${{ secrets.NSC_TOKEN }}

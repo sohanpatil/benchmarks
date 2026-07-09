@@ -12,7 +12,7 @@ import { e2b } from '@computesdk/e2b';
 import { hopx } from '@computesdk/hopx';
 import { isorun } from '@computesdk/isorun';
 // import { lelantos } from '@computesdk/lelantos';
-// import { lightning } from '@computesdk/lightning';
+import { lightning } from '@computesdk/lightning';
 import { modal } from '@computesdk/modal';
 // import { namespace } from '@computesdk/namespace';
 import { northflank } from '@computesdk/northflank';
@@ -111,11 +111,11 @@ export const providers: ProviderConfig[] = [
   //   requiredEnvVars: ['LELANTOS_API_KEY'],
   //   createCompute: () => lelantos({ apiKey: process.env.LELANTOS_API_KEY! }),
   // },
-  // {
-  //   name: 'lightning',
-  //   requiredEnvVars: ['LIGHTNING_API_KEY'],
-  //   createCompute: () => lightning({ apiKey: process.env.LIGHTNING_API_KEY! }),
-  // },
+  {
+    name: 'lightning',
+    requiredEnvVars: ['LIGHTNING_API_KEY'],
+    createCompute: () => lightning({ apiKey: process.env.LIGHTNING_API_KEY! }),
+  },
   {
     name: 'modal',
     requiredEnvVars: ['MODAL_TOKEN_ID', 'MODAL_TOKEN_SECRET'],
