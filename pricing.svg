@@ -66,25 +66,25 @@
   <!-- cloudflare -->
   <text class="row provider" x="40" y="252">Cloudflare</text>
   <text class="row cost fast" x="200" y="252">~$0.0252</text>
-  <text class="row" x="380" y="252">78.5 (100/100)</text>
+  <text class="row" x="380" y="252">78.8 (100/100)</text>
   <text class="row" x="580" y="252">Active CPU</text>
-  <text class="row value fast" x="740" y="252">82.8</text>
+  <text class="row value fast" x="740" y="252">83.0</text>
   <text class="row confidence-exact" x="920" y="252">exact</text>
   <line class="divider" x1="24" y1="266" x2="1176" y2="266"/>
 
   <!-- vercel -->
   <text class="row provider" x="40" y="296">Vercel</text>
   <text class="row cost fast" x="200" y="296">~$0.0340</text>
-  <text class="row" x="380" y="296">95.4 (100/100)</text>
+  <text class="row" x="380" y="296">95.5 (100/100)</text>
   <text class="row" x="580" y="296">Active CPU</text>
-  <text class="row value fast" x="740" y="296">89.0</text>
+  <text class="row value fast" x="740" y="296">89.1</text>
   <text class="row confidence-exact" x="920" y="296">exact</text>
   <line class="divider" x1="24" y1="310" x2="1176" y2="310"/>
 
   <!-- modal -->
   <text class="row provider" x="40" y="340">Modal</text>
   <text class="row cost fast" x="200" y="340">~$0.0661</text>
-  <text class="row" x="380" y="340">94.7 (100/100)</text>
+  <text class="row" x="380" y="340">94.5 (100/100)</text>
   <text class="row" x="580" y="340">Active CPU</text>
   <text class="row value fast" x="740" y="340">79.6</text>
   <text class="row confidence-exact" x="920" y="340">exact</text>
@@ -93,7 +93,7 @@
   <!-- codesandbox -->
   <text class="row provider" x="40" y="384">Codesandbox</text>
   <text class="row cost fast" x="200" y="384">$0.0743</text>
-  <text class="row" x="380" y="384">76.6 (100/100)</text>
+  <text class="row" x="380" y="384">76.5 (100/100)</text>
   <text class="row" x="580" y="384">Credits</text>
   <text class="row value fast" x="740" y="384">69.4</text>
   <text class="row confidence-estimated" x="920" y="384">estimated</text>
@@ -102,7 +102,7 @@
   <!-- e2b -->
   <text class="row provider" x="40" y="428">E2B</text>
   <text class="row cost fast" x="200" y="428">$0.0828</text>
-  <text class="row" x="380" y="428">95.7 (100/100)</text>
+  <text class="row" x="380" y="428">95.8 (100/100)</text>
   <text class="row" x="580" y="428">Per-second</text>
   <text class="row value fast" x="740" y="428">74.9</text>
   <text class="row confidence-exact" x="920" y="428">exact</text>
@@ -111,16 +111,16 @@
   <!-- hopx -->
   <text class="row provider" x="40" y="472">Hopx</text>
   <text class="row cost fast" x="200" y="472">$0.0828</text>
-  <text class="row" x="380" y="472">0.0 (0/100)</text>
+  <text class="row" x="380" y="472">86.4 (100/100)</text>
   <text class="row" x="580" y="472">Per-second</text>
-  <text class="row value status" x="740" y="472">--</text>
+  <text class="row value fast" x="740" y="472">71.1</text>
   <text class="row confidence-exact" x="920" y="472">exact</text>
   <line class="divider" x1="24" y1="486" x2="1176" y2="486"/>
 
   <!-- daytona -->
   <text class="row provider" x="40" y="516">Daytona</text>
   <text class="row cost fast" x="200" y="516">$0.0828</text>
-  <text class="row" x="380" y="516">98.2 (100/100)</text>
+  <text class="row" x="380" y="516">98.3 (100/100)</text>
   <text class="row" x="580" y="516">Per-second</text>
   <text class="row value fast" x="740" y="516">75.9</text>
   <text class="row confidence-exact" x="920" y="516">exact</text>
@@ -129,9 +129,9 @@
   <!-- runloop -->
   <text class="row provider" x="40" y="560">Runloop</text>
   <text class="row cost slow" x="200" y="560">$0.1584</text>
-  <text class="row" x="380" y="560">94.0 (100/100)</text>
+  <text class="row" x="380" y="560">93.0 (100/100)</text>
   <text class="row" x="580" y="560">Per-second</text>
-  <text class="row value medium" x="740" y="560">44.2</text>
+  <text class="row value medium" x="740" y="560">44.0</text>
   <text class="row confidence-exact" x="920" y="560">exact</text>
 
   <!-- Timestamp -->
