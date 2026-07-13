@@ -27,15 +27,20 @@ const FIRST_HEADING = '#firstHeading';
 const NAV_URLS: string[] = parseNavUrls();
 
 function parseNavUrls(): string[] {
-  const raw = process.env.THROUGHPUT_URLS;
+  const raw = process.env.THROUGHPUT_URLS?.trim();
   if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string' && u.length > 0);
-  } catch {
-    // Malformed input falls back to per-navigation random URLs below.
+  // Accept either a JSON array or a plain newline/whitespace-delimited list, so
+  // the workflow can emit the URLs with pure bash and not depend on jq/python
+  // being present on the runner image.
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string' && u.length > 0);
+    } catch {
+      // Malformed JSON falls through to whitespace splitting below.
+    }
   }
-  return [];
+  return raw.split(/\s+/).filter(u => u.length > 0);
 }
 
 /** The article URL iteration `i` should navigate to (same across providers). */

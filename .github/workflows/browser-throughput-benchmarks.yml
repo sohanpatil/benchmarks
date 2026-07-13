@@ -49,8 +49,13 @@ jobs:
             fi
             urls+=("$url")
           done
-          json=$(printf '%s\n' "${urls[@]}" | jq -R . | jq -cs .)
-          echo "urls=$json" >> "$GITHUB_OUTPUT"
+          # Emit as a newline-delimited multiline output. Pure bash — avoids a
+          # jq/python dependency that may be absent on the runner image.
+          {
+            echo "urls<<URLS_EOF"
+            printf '%s\n' "${urls[@]}"
+            echo "URLS_EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved ${#urls[@]} shared article URLs for all providers"
 
   bench:
