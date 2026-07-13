@@ -9,7 +9,7 @@ on:
       - 'src/merge-results.ts'
       - 'package.json'
   schedule:
-    - cron: '0 6 * * *' # Daily at 6am UTC
+    - cron: '0 6 * * 5' # Weekly on Friday at 6am UTC
   workflow_dispatch:
     inputs:
       iterations:
@@ -167,7 +167,7 @@ jobs:
 
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             // Only render sizes that actually ran in this workflow. The checkout
-            // carries committed latest.json files for every size (from the daily
+            // carries committed latest.json files for every size (from the weekly
             // run), so we derive the size list from this run's downloaded
             // artifacts (storage-results-<provider>-<size>) instead of hardcoding.
             const sizeOrder = ['1mb', '4mb', '10mb', '16mb'];

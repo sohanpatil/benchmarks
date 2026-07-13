@@ -9,7 +9,7 @@ on:
       - 'src/merge-results.ts'
       - 'package.json'
   schedule:
-    - cron: '0 3 * * *' # Daily at 03:00 UTC (offset from main browser benchmark)
+    - cron: '0 3 * * 5' # Weekly on Friday at 03:00 UTC (offset from main browser benchmark)
   workflow_dispatch:
     inputs:
       iterations:
