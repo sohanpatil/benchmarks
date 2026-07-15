@@ -1,0 +1,24 @@
+name: Probe Region
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    name: Probe Namespace runner egress
+    runs-on: namespace-profile-default
+    timeout-minutes: 5
+    steps:
+      - name: Probe
+        run: |
+          echo "=== ipinfo.io ==="
+          curl -sS https://ipinfo.io || echo "ipinfo unavailable"
+          echo ""
+          echo "=== AWS IMDS (if applicable) ==="
+          curl -sS --max-time 2 http://169.254.169.254/latest/meta-data/placement/availability-zone 2>&1 || echo "no imds"
+          echo ""
+          echo "=== hostname ==="
+          hostname
+          echo ""
+          echo "=== resolv.conf ==="
+          cat /etc/resolv.conf 2>/dev/null || true
