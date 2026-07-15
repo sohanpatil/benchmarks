@@ -8,6 +8,7 @@ import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
 import { runSequentialWithPlatformReport } from './sandbox/report-run.js';
+import { runBurstWithPlatformReport } from './sandbox/report-run-burst.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import {
   runSnapshotForkBenchmark,
@@ -55,11 +56,13 @@ const datasetArg = getArgValue(args, '--dataset') || 'small';
 
 // --report streams this run to a real benchmarks-platform instance (via
 // @computesdk/bench) instead of only writing local JSON — see
-// sandbox/report-run.ts. Currently only supported for --mode sequential.
+// sandbox/report-run.ts and sandbox/report-run-burst.ts. Supported for
+// --mode sequential and --mode burst (or its --mode concurrent alias).
 const reportToPlatform = args.includes('--report');
 const platformBaseUrl = (process.env.BENCHMARKS_PLATFORM_URL || 'http://localhost:3000').replace(/\/+$/, '') + '/api/v1';
 const platformOrgSlug = process.env.BENCHMARKS_PLATFORM_ORG_SLUG || 'computesdk';
-const platformBenchmarkSlug = getArgValue(args, '--benchmark-slug') || 'sandbox-tti-local';
+const platformBenchmarkSlug = getArgValue(args, '--benchmark-slug')
+  || (rawMode === 'burst' || rawMode === 'concurrent' ? 'sandbox-burst-local' : 'sandbox-tti-local');
 
 function getArgValue(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
@@ -95,6 +98,17 @@ async function runMode(mode: BenchmarkMode, toRun: typeof providers): Promise<vo
   if (mode === 'sequential' && reportToPlatform) {
     for (const providerConfig of toRun) {
       await runSequentialWithPlatformReport(providerConfig, iterations, {
+        benchmarkSlug: platformBenchmarkSlug,
+        baseUrl: platformBaseUrl,
+        orgSlug: platformOrgSlug,
+      });
+    }
+    return;
+  }
+
+  if (mode === 'burst' && reportToPlatform) {
+    for (const providerConfig of toRun) {
+      await runBurstWithPlatformReport(providerConfig, concurrency, {
         benchmarkSlug: platformBenchmarkSlug,
         baseUrl: platformBaseUrl,
         orgSlug: platformOrgSlug,
@@ -452,9 +466,23 @@ async function runBrowserThroughput(toRun: typeof throughputProviders): Promise<
   console.log(`Copied latest: ${latestPath}`);
 }
 
+const REPORTABLE_RAW_MODES = new Set(['sequential', 'burst', 'concurrent']);
+
 async function main() {
-  if (reportToPlatform && rawMode !== 'sequential') {
-    console.error('--report currently only supports --mode sequential (pass --mode sequential explicitly).');
+  if (reportToPlatform && !REPORTABLE_RAW_MODES.has(rawMode ?? '')) {
+    console.error('--report currently only supports --mode sequential or --mode burst (pass one explicitly, e.g. --mode burst).');
+    process.exit(1);
+  }
+
+  // A bare --report --mode burst would otherwise silently inherit the
+  // --concurrency default (100), reporting 100 real concurrent sandboxes to
+  // the platform per provider — require the caller to say so explicitly.
+  const concurrencyArgProvided = args.includes('--concurrency');
+  if (reportToPlatform && (rawMode === 'burst' || rawMode === 'concurrent') && !concurrencyArgProvided) {
+    console.error(
+      `--report --mode burst requires an explicit --concurrency (no implicit default of ${concurrency}) ` +
+      `to avoid accidentally launching ${concurrency} concurrent sandboxes per provider. Pass e.g. --concurrency 5.`,
+    );
     process.exit(1);
   }
 
