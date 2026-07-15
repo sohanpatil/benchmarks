@@ -97,6 +97,11 @@ npm run bench -- --mode browser --provider browserbase
 npm run bench -- --mode storage
 npm run bench -- --mode storage --provider aws-s3
 npm run bench -- --mode storage --file-size 100MB
+
+# Report a sequential run to a real benchmarks-platform instance in real time
+# (requires COMPUTESDK_ADMIN_API_KEY + BENCHMARKS_PLATFORM_URL in .env — see
+# env.example. Currently only supported for --mode sequential.)
+npm run bench -- --provider e2b --mode sequential --iterations 5 --report
 ```
 
 ### Code Style

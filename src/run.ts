@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { runBenchmark } from './sandbox/benchmark.js';
 import { runConcurrentBenchmark } from './sandbox/concurrent.js';
 import { runStaggeredBenchmark } from './sandbox/staggered.js';
+import { runSequentialWithPlatformReport } from './sandbox/report-run.js';
 import { runStorageBenchmark, writeStorageResultsJson } from './storage/benchmark.js';
 import {
   runSnapshotForkBenchmark,
@@ -52,6 +53,14 @@ const staggerDelay = parseInt(getArgValue(args, '--stagger-delay') || '200', 10)
 const fileSizeArg = getArgValue(args, '--file-size') || '10MB';
 const datasetArg = getArgValue(args, '--dataset') || 'small';
 
+// --report streams this run to a real benchmarks-platform instance (via
+// @computesdk/bench) instead of only writing local JSON — see
+// sandbox/report-run.ts. Currently only supported for --mode sequential.
+const reportToPlatform = args.includes('--report');
+const platformBaseUrl = (process.env.BENCHMARKS_PLATFORM_URL || 'http://localhost:3000').replace(/\/+$/, '') + '/api/v1';
+const platformOrgSlug = process.env.BENCHMARKS_PLATFORM_ORG_SLUG || 'computesdk';
+const platformBenchmarkSlug = getArgValue(args, '--benchmark-slug') || 'sandbox-tti-local';
+
 function getArgValue(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : undefined;
@@ -83,6 +92,17 @@ function modeToDir(m: BenchmarkMode | 'storage' | 'snapshot-fork' | 'browser-thr
 }
 
 async function runMode(mode: BenchmarkMode, toRun: typeof providers): Promise<void> {
+  if (mode === 'sequential' && reportToPlatform) {
+    for (const providerConfig of toRun) {
+      await runSequentialWithPlatformReport(providerConfig, iterations, {
+        benchmarkSlug: platformBenchmarkSlug,
+        baseUrl: platformBaseUrl,
+        orgSlug: platformOrgSlug,
+      });
+    }
+    return;
+  }
+
   console.log('\n' + '='.repeat(70));
   console.log(`  MODE: ${mode.toUpperCase()}`);
   if (mode === 'sequential') {
@@ -433,6 +453,11 @@ async function runBrowserThroughput(toRun: typeof throughputProviders): Promise<
 }
 
 async function main() {
+  if (reportToPlatform && rawMode !== 'sequential') {
+    console.error('--report currently only supports --mode sequential (pass --mode sequential explicitly).');
+    process.exit(1);
+  }
+
   const modes = getModesToRun();
 
   // Handle browser-throughput mode separately
