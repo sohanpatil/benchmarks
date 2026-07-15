@@ -57,33 +57,22 @@ jobs:
       fail-fast: false
       matrix:
         provider:
-          - archil
-          - beam
-          - blaxel
-          - cloud-run
-          - cloudflare
-          - codesandbox
-          # - collimate
-          - createos
-          - daytona
-          - declaw
+          # Reduced to a single entry so the probe runs on one Namespace VM.
           - e2b
-          - hopx
-          - isorun
-          # - lelantos
-          - lightning
-          - modal
-          # - namespace
-          - northflank
-          # - quilt
-          # - railway
-          - runloop
-          - superserve
-          # - tenki
-          - tensorlake
-          - upstash
-          - vercel
     steps:
+      - name: Probe egress region
+        run: |
+          echo "=== ipinfo.io ==="
+          curl -sS https://ipinfo.io || echo "ipinfo unavailable"
+          echo ""
+          echo "=== AWS IMDS (if applicable) ==="
+          curl -sS --max-time 2 http://169.254.169.254/latest/meta-data/placement/availability-zone 2>&1 || echo "no imds"
+          echo ""
+          echo "=== hostname ==="
+          hostname
+          echo ""
+          echo "=== resolv.conf ==="
+          cat /etc/resolv.conf 2>/dev/null || true
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
